@@ -5,31 +5,32 @@ Brain control device that can be used to map game controls
 
 ## STRUCTURE
 1. **CAD/**
-   - CAD design files
+   - Upload your CAD design files
    - e.g., `final_design.FCStd`, `step_file.STEP`
 
 2. **Code/**
-   - Arduino, Python, or other code files
+   - Upload all your Arduino, Python, or other code files
    - e.g., `arduino_code.ino`, `motor_control.py`
 
 3. **Documentation/**
-   - Presentation slides, PDF reports, BoM
+   - Add your presentation slides, PDF reports, BoM
    - e.g., `project_presentation.pptx`, `BOM.xlsx`
 
 4. **Electronics/**
-   - Circuit schematics or PCB layout images
+   - Save your circuit schematics or PCB layout images
    - e.g., `schematic_diagram.jpg`
 
 5. **Photos_Videos/**
-   - Images and videos
+   - Store all your images and videos
    - e.g., `demo_video.mp4`, `prototype_photo.jpg`
    - **Rename all photos and videos in sequential order, appending `TEAMNUMBER_PROJECT_NAME` to each asset.**
 
 6. **Reference_Data/**
-   - All your downloaded catalogs, data sheets, pinout diagrams, etc.
+   - Store all your catalogs, data sheets, pinout diagrams, etc.
    - e.g., `demo_video.mp4`, `prototype_photo.jpg`
 
-
+7. **WIKI**
+   - For more information about the project, check out our wiki
 
 ## License
 
