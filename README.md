@@ -1,5 +1,5 @@
 # MAKER'S ASYLUM INNOVATION SCHOOL
-## 2026 Winter Diwali COHORT #8 Team 3
+## 2026 Winter Diwali COHORT #8 Team 2
 ## BCI Gaming
 Brain control device that can be used to map game controls
 
