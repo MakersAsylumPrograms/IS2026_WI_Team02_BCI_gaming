@@ -1,9 +1,34 @@
 # MAKER'S ASYLUM INNOVATION SCHOOL
-## YY COHORT
-## NAME OF PROJECT
+## 2026 Winter Diwali COHORT #8 Team 3
+## BCI Gaming
+Brain control device that can be used to map game controls
 
-Describe the project.
-Describe what are the contents of each folder - CODE, CAD, Electronics etc
+## STRUCTURE
+1. **CAD/**
+   - CAD design files
+   - e.g., `final_design.FCStd`, `step_file.STEP`
+
+2. **Code/**
+   - Arduino, Python, or other code files
+   - e.g., `arduino_code.ino`, `motor_control.py`
+
+3. **Documentation/**
+   - Presentation slides, PDF reports, BoM
+   - e.g., `project_presentation.pptx`, `BOM.xlsx`
+
+4. **Electronics/**
+   - Circuit schematics or PCB layout images
+   - e.g., `schematic_diagram.jpg`
+
+5. **Photos_Videos/**
+   - Images and videos
+   - e.g., `demo_video.mp4`, `prototype_photo.jpg`
+   - **Rename all photos and videos in sequential order, appending `TEAMNUMBER_PROJECT_NAME` to each asset.**
+
+6. **Reference_Data/**
+   - All your downloaded catalogs, data sheets, pinout diagrams, etc.
+   - e.g., `demo_video.mp4`, `prototype_photo.jpg`
+
 
 
 ## License
