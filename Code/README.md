@@ -11,6 +11,8 @@ Backend, network and firmware details: [`../Documentation/INTEGRATION.md`](../Do
 
 ## Run the demo
 
+Short demo-day checklist: [`START.md`](START.md).
+
 1. **Start the backend on the patient laptop** (PowerShell, from the repo root):
 
    ```powershell
