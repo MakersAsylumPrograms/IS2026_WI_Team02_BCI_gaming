@@ -64,6 +64,10 @@ export function createInput(handleCommand) {
     const tag = event.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (event.ctrlKey || event.altKey || event.metaKey) return;
+    // A normal button the caregiver tabbed to (e.g. "Sign out") keeps its
+    // usual Enter/Space behaviour. Menu options are never focused, so
+    // this never applies to them.
+    if ((tag === 'BUTTON' || tag === 'A') && !event.target.hasAttribute('data-index')) return;
 
     const command = KEY_MAP[event.key];
     if (!command) return;
