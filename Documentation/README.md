@@ -1,1 +1,0 @@
-This folder will contain all of your documentation which includes details of project /instructions/flow diagram files.

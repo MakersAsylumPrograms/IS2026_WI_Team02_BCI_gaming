@@ -21,7 +21,7 @@ def system(tmp_path):
 
 def login(app, role):
     client = app.test_client()
-    result = client.post('/api/v1/session', json={'role': role, 'password': role + '-test'},
+    result = client.post('/api/v1/session', json={'role': role, 'password': role + '-test', 'login_id': 'staff'},
                          headers={'X-EqualCare-Client': 'dashboard'})
     assert result.status_code == 200
     return client, {'X-CSRF-Token': result.json['csrf']}
@@ -206,3 +206,42 @@ def test_unicode_password_is_rejected_cleanly(system):
     response = app.test_client().post('/api/v1/session', json={'role': 'patient', 'password': 'wrong-\u20ac'},
                                       headers={'X-EqualCare-Client': 'dashboard'})
     assert response.status_code == 401
+
+
+def test_reload_logout_and_backend_restart(system):
+    app, config, _ = system
+    patient, ph = login(app, 'patient')
+    cookie = patient.get_cookie('session')
+    assert cookie and cookie.http_only and cookie.same_site == 'Strict'
+    # Reload does not require a new login or a new CSRF token.
+    for _ in range(3):
+        assert patient.get('/patient/').status_code == 200
+        restored = patient.get('/api/v1/session')
+        assert restored.json['csrf'] == ph['X-CSRF-Token']
+        assert restored.json['patient']['name'] == 'Bed 1'
+    restarted_config = {k: v for k, v in config.items() if k != 'SECRET_KEY'}
+    restarted = create_app(restarted_config).test_client()
+    restarted.set_cookie('session', cookie.value)
+    assert restarted.get('/api/v1/session').status_code == 401
+    assert patient.delete('/api/v1/session', headers=ph).status_code == 200
+    assert patient.get('/api/v1/session').status_code == 401
+
+
+def test_staff_requires_login_id_and_patient_metadata(system):
+    app, _, _ = system
+    guest = app.test_client()
+    for login_id in (None, 'wrong'):
+        assert guest.post('/api/v1/session', json=dict(role='staff', password='staff-test', login_id=login_id),
+                          headers={'X-EqualCare-Client': 'dashboard'}).status_code == 401
+    staff, _ = login(app, 'staff')
+    assert staff.get('/api/v1/requests').json['patient'] == dict(id='default', name='Bed 1', device_id='esp32-01')
+
+
+@pytest.mark.parametrize('source', ['joystick', 'eog'])
+def test_input_sources_share_the_contract(system, source):
+    app, _, _ = system
+    patient, _ = login(app, 'patient')
+    initial = poll(patient).json
+    assert emit(app, source=source, command='SELECT').json['accepted']
+    result = poll(patient, initial).json['events']
+    assert len(result) == 1 and result[0]['source'] == source and result[0]['command'] == 'SELECT'

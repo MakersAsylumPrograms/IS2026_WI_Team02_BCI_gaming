@@ -1,29 +1,7 @@
-// =====================================================================
-// patient.js — the patient screen.
-//
-// The screen is a tiny "state machine". It is always on exactly one of
-// these screens, and every screen is just a title + a list of options:
-//
-//   menu ──SELECT──> confirm ──Confirm──> sending ──ok──> status ──Done──> menu
-//                       │                    │              (Sent → Help is coming ✓ → Done ✓)
-//                     Cancel             no answer
-//                       ▼                    ▼
-//                     menu               uncertain ──Try again──> sending
-//                                            └──────Cancel──────> menu
-//
-// Input arrives ONLY through handleCommand() (see input.js), so the
-// keyboard, the mouse and the ESP32 all drive the screen the same way.
-// Every screen can be completed with just NEXT + SELECT: "Cancel" and
-// "Back to menu" are real options on screen, not only the Escape key.
-// =====================================================================
 import {EqualCareAPI, REQUEST_TYPES, typeInfo, newId} from './api.js';
 import {createInput, startDevicePolling, NEXT, PREVIOUS, SELECT, BACK} from './input.js';
 import {$, setText, startPolling, createConnectionStatus, createSession} from './common.js';
 
-// ---- Settings (safe to tweak) ---------------------------------------
-// On the confirm screen both "Confirm" and "Cancel" are shown. This picks
-// which one is highlighted first. Starting on Cancel means an accidental
-// double-SELECT can never send an alert: sending needs NEXT, then SELECT.
 const CONFIRM_STARTS_ON_CANCEL = true;
 const RETURN_TO_MENU_AFTER_MS = 5000;    // after "Done ✓"
 const POLL_MS = 1000;                    // how often we refresh request status
@@ -56,12 +34,6 @@ const state = {
 let returnTimer = null;      // timer that goes back to the menu after "Done"
 let stopRequestPolling = null, stopDevicePolling = null;
 
-// ---------------------------------------------------------------------
-// "Pending" = a send whose result we don't know yet (e.g. Wi-Fi dropped
-// mid-request). We save its idempotency key in localStorage so that, even
-// after a page refresh, "Try again" re-uses the SAME key and the backend
-// can never create a duplicate.
-// ---------------------------------------------------------------------
 let pending = null;
 try { pending = JSON.parse(localStorage.getItem(PENDING_KEY)); } catch { /* none saved */ }
 
@@ -96,11 +68,9 @@ function goToMenu() {
   show('menu', Math.max(0, REQUEST_TYPES.findIndex(t => t.type === state.chosen)));
 }
 
-// =====================================================================
 // SCREENS — each returns {title, detail, options, back}
 //   options: [{icon, label, note, run}]  (run() is called on SELECT)
 //   back:    what BACK (Escape) does, or null
-// =====================================================================
 function currentScreen() {
   const chosen = typeInfo(state.chosen);
 
@@ -205,9 +175,7 @@ async function send(type) {
   }
 }
 
-// =====================================================================
 // handleCommand — THE single entry point for all input.
-// =====================================================================
 function handleCommand(command, detail) {
   if (!state.signedIn || !state.loaded) return;
   const screen = currentScreen();
@@ -224,9 +192,7 @@ function handleCommand(command, detail) {
 }
 const input = createInput(handleCommand);
 
-// =====================================================================
 // Polling the backend for request status (every POLL_MS)
-// =====================================================================
 async function refresh() {
   try {
     const {requests} = await api.requests();
@@ -275,9 +241,7 @@ function recoverAfterLoad() {
   show('menu');
 }
 
-// =====================================================================
 // Drawing
-// =====================================================================
 let lastOptionsKey = '';
 
 function render() {
@@ -356,9 +320,7 @@ $('options').addEventListener('click', event => {
   if (button) input.click(Number(button.dataset.index));
 });
 
-// =====================================================================
 // Start / stop with sign-in
-// =====================================================================
 const session = createSession(api, 'patient', {
   onSignIn() {
     state.signedIn = true;

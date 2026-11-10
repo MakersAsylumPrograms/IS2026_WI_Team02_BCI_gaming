@@ -1,137 +1,223 @@
-# EqualCare code
+# EqualCare setup and team guide
 
-| Folder | What it is |
-| --- | --- |
-| `backend/` | Flask + SQLite server. Serves the API **and** both screens. |
-| `frontend/` | Patient screen, staff screen, landing page. Plain HTML/CSS/JS, no build step. |
-| `firmware/` | ESP32 sketch and HTTP transport (joystick now, EOG later). |
+## Start and connect
 
-Full API contract: [`../Documentation/openapi.json`](../Documentation/openapi.json).
-Backend, network and firmware details: [`../Documentation/INTEGRATION.md`](../Documentation/INTEGRATION.md).
+Requires Python 3.11+; initial dependency installation needs internet.
+From the repository root in PowerShell:
 
-## Run the demo
-
-Short demo-day checklist: [`START.md`](START.md).
-
-1. **Start the backend on the patient laptop** (PowerShell, from the repo root):
-
-   ```powershell
-   & ./Code/backend/start.ps1
-   ```
-
-   The first run prints the patient password, staff password and device token.
-   Print them again with
-   `& Code/backend/.venv/Scripts/python.exe Code/backend/run.py --show-credentials`.
-
-2. **Patient screen** (same laptop): open `http://localhost:8000/patient/`.
-   A caregiver types the patient password once. Refreshing stays signed in.
-
-3. **Staff screen** (second laptop): open `http://<patient-laptop-IP>:8000/staff/`,
-   enter the staff password, then click **"Click to enable sound alerts"**.
-   Browsers block sound until you click the page once.
-
-4. *(Optional, no hardware)* Pretend to be the ESP32:
-
-   ```powershell
-   & Code/backend/.venv/Scripts/python.exe Code/backend/simulate_device.py
-   ```
-
-   Type `n`, `p` or `s` and press Enter (NEXT / PREVIOUS / SELECT).
-
-**Testing both screens on ONE laptop:** sign-in cookies are shared per
-address, so open the patient screen at `http://localhost:8000/patient/` and
-the staff screen at `http://127.0.0.1:8000/staff/`. You can also use a
-private window for one of them.
-
-## Two laptops on a phone hotspot (setting the API address)
-
-You don't need to configure any URL. The backend serves the pages and the
-API from the same address, so whatever you type in the browser is the
-backend. The setting exists in one place, `API_BASE` in
-[`frontend/shared/api.js`](frontend/shared/api.js), and should stay
-`'/api/v1'`. The backend deliberately has no CORS, so pointing the frontend
-at another machine would be blocked by the browser.
-
-1. Connect both laptops (and later the ESP32) to the same hotspot.
-2. On the patient laptop run `ipconfig` and note the **Wi-Fi IPv4 address**,
-   e.g. `192.168.43.20`.
-3. Allow port 8000 through Windows Firewall on the patient laptop
-   (PowerShell as Administrator):
-
-   ```powershell
-   New-NetFirewallRule -DisplayName "EqualCare 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Private
-   ```
-
-   If Windows labels the hotspot as a *Public* network, either switch it to
-   Private in Wi-Fi settings or add `-Profile Public` for the demo.
-4. On the staff laptop, first check `http://<IP>:8000/api/v1/health`.
-   It should show `{"status":"ok"}`. Then open `http://<IP>:8000/staff/`.
-5. If the hotspot's IP changes, just reopen the staff page with the new IP
-   (and update `EC_SERVER` in the ESP32 `config.h`).
-
-## Controls
-
-**Patient screen**: every input becomes one of four commands.
-
-| Input | Command |
-| --- | --- |
-| → or ↓ | NEXT |
-| ← or ↑ | PREVIOUS |
-| Enter or Space | SELECT |
-| Esc | BACK |
-| Mouse click on an option | highlight it + SELECT |
-| ESP32 joystick / EOG | NEXT / PREVIOUS / SELECT |
-
-- The whole flow works with **only NEXT + SELECT** (EOG may give us just two
-  gestures). "Cancel" and "Back to menu" are real on-screen options.
-- A held key counts once. Two SELECTs within 0.7 s count as one.
-- Flow: menu → "Water? Confirm / Cancel" → Request sent ✓ → Help is coming ✓
-  → Done ✓ → back to the menu after 5 s. The confirm screen starts on
-  **Cancel**, so an accidental double SELECT can't send an alert.
-- If the backend doesn't answer, the screen says "Not sure it was sent" and
-  offers **Try again**. That reuses the same request ID, so it can never
-  create a duplicate.
-
-**Staff screen**: mouse on the **Seen** / **Done** buttons, or the keyboard:
-`S` marks the top waiting request Seen and `D` marks the top seen request Done.
-
-## Where the ESP32 plugs in
-
-The ESP32 never talks to the browser directly:
-
-```text
-ESP32 --POST /api/v1/input-events--> backend --polled every 250 ms--> patient browser
+```powershell
+& ./Code/backend/start.ps1
 ```
 
-- Browser side: **`fromDevice()` in [`frontend/shared/input.js`](frontend/shared/input.js)**,
-  marked `ESP32 HOOK`. `startDevicePolling()` in the same file fetches the
-  events and passes each one to `fromDevice()`. Hardware commands then follow
-  exactly the same path as the keyboard.
-- Firmware side: call `transport.emit(CareCommand::Next, CareSource::Joystick)`
-  (or `CareSource::Eog`) once per gesture. See `firmware/firmware.ino`.
-- Switching from joystick to EOG needs **no frontend change**.
+Leave the terminal open; Ctrl+C stops the server. The helper creates a virtual
+environment, installs requirements and starts Flask through Waitress on port 8000.
+For subsequent offline starts after installation:
 
-## Frontend files (`frontend/shared/`, served as `/assets/…`)
+```powershell
+& Code/backend/.venv/Scripts/python.exe Code/backend/run.py
+```
 
-| File | Job |
+If PowerShell blocks the helper, run these directly:
+
+```powershell
+py -3 -m venv Code/backend/.venv
+& Code/backend/.venv/Scripts/python.exe -m pip install -r Code/backend/requirements.txt
+& Code/backend/.venv/Scripts/python.exe Code/backend/run.py
+```
+
+| Screen/check | Address |
 | --- | --- |
-| `api.js` | The only file that calls the backend. `API_BASE`, request type labels. |
-| `input.js` | Keyboard / mouse / ESP32 → NEXT, PREVIOUS, SELECT, BACK. |
-| `common.js` | Sign-in, polling helper, "Connected / Reconnecting" banner. |
-| `patient.js` | Patient screen state machine (menu, confirm, status, …). |
-| `staff.js` | Staff dashboard: sorting, timers, Seen/Done, alerts. |
-| `styles.css` | All styling. Colours are at the top. |
+| Patient on backend laptop | http://localhost:8000/patient/ |
+| Nurse on second laptop | http://PATIENT-LAPTOP-IP:8000/staff/ |
+| Server check | http://PATIENT-LAPTOP-IP:8000/api/v1/health |
 
-Settings you might want to tweak are constants at the top of each file:
-`CONFIRM_STARTS_ON_CANCEL` and `RETURN_TO_MENU_AFTER_MS` (patient.js),
-`SELECT_DEBOUNCE_MS` (input.js), and `PATIENT_LABEL` and `OVERDUE_AFTER_MS`
-(staff.js).
+Health returns JSON with `status: "ok"` and `version: "1"`.
+For both screens on one laptop, use localhost for patient and 127.0.0.1 for staff,
+or separate browser profiles; otherwise sign-in cookies are shared.
 
-## Tests
+## Passwords, token and local data
+
+Patient login stays password-only. Staff signs in with login ID **staff** and its
+existing password. No registration is required. Sign-in survives page reloads;
+restarting the backend ends browser sessions. Logout is explicit on both screens.
+
+On first installation the launcher prints newly generated passwords once. Existing
+passwords and the ESP32 token are preserved when credentials migrate to hashes.
+Passwords cannot be displayed after migration. View the staff login ID and device
+settings with:
+
+```powershell
+& Code/backend/.venv/Scripts/python.exe Code/backend/run.py --show-credentials
+```
+
+| Saved setting | Purpose |
+| --- | --- |
+| PATIENT_PASSWORD_HASH / STAFF_PASSWORD_HASH | Hashed existing passwords; not plaintext login values |
+| STAFF_LOGIN_ID | Staff login ID; defaults to staff |
+| PATIENT_NAME | Default patient's display name; defaults to Bed 1 |
+| DEVICE_ID | Defaults to esp32-01; matches firmware EC_DEVICE_ID |
+| DEVICE_TOKEN | Firmware/simulator credential; copy into EC_DEVICE_TOKEN |
+
+Local settings are in gitignored `Code/backend/instance/credentials.json`.
+Requests remain in `Code/backend/instance/equalcare.sqlite3`. Neither is reset
+by restarting. The browser-signing secret exists only in memory for that run.
+
+Change a password using a readable prompt (saved as a hash):
+
+```powershell
+& Code/backend/.venv/Scripts/python.exe Code/backend/run.py --set-password staff
+```
+
+Use `patient` instead of `staff` for the patient password. Restart the backend.
+Alternatively add `STAFF_PASSWORD` or `PATIENT_PASSWORD` with a readable string to
+credentials.json; restart converts it to the corresponding hash and removes the
+plaintext entry. Never type a readable password into a `_PASSWORD_HASH` field.
+
+Environment overrides EQUALCARE_PATIENT_PASSWORD, EQUALCARE_STAFF_PASSWORD,
+EQUALCARE_STAFF_LOGIN_ID, EQUALCARE_PATIENT_NAME, EQUALCARE_DEVICE_ID and
+EQUALCARE_DEVICE_TOKEN apply to that process only and take precedence over the file.
+The old EQUALCARE_SECRET setting is unused. The simulator reads the saved device
+token unless its terminal overrides EQUALCARE_DEVICE_TOKEN.
+
+## Wi-Fi and ESP32 configuration
+
+1. Join both laptops and ESP32 to the same LAN/hotspot; ESP32 needs 2.4 GHz.
+2. Run `ipconfig` on the patient laptop and find its Wi-Fi IPv4 address.
+   Reserve that address where possible; keep the laptop awake.
+3. Allow inbound TCP 8000 for the backend on Windows' Private network profile.
+   Check the health URL from the nurse laptop. If unreachable, check the IP,
+   firewall and hotspot/client isolation.
+4. Copy `firmware/config.example.h` to gitignored `firmware/config.h`:
+
+| Firmware setting | Value |
+| --- | --- |
+| EC_WIFI_SSID | Wi-Fi/hotspot name |
+| EC_WIFI_PASSWORD | Wi-Fi/hotspot password, separate from dashboard passwords |
+| EC_SERVER | http://PATIENT-LAPTOP-IP:8000 |
+| EC_DEVICE_ID | esp32-01, unless overridden on the backend |
+| EC_DEVICE_TOKEN | Device token from the backend launcher |
+
+The frontend uses the relative API_BASE `/api/v1` in shared/api.js; keep it
+same-origin. Opening the nurse URL automatically uses that laptop-hosted backend.
+If the host IP changes, update the nurse URL and EC_SERVER together.
+Run one backend process; command buffers/leases are in memory. Plain HTTP and
+local credentials are intended for a controlled LAN demonstration.
+
+## Screens and controls
+
+Patient flow: menu -> confirmation -> sending -> Sent / Help is coming / Done.
+Confirmation initially highlights Cancel; completed requests return to the menu
+after five seconds. Uncertain delivery offers Try again with the same saved
+idempotency key. The full flow works with just NEXT and SELECT.
+
+| Input | Action |
+| --- | --- |
+| Right/down arrow | NEXT |
+| Left/up arrow | PREVIOUS |
+| Enter/Space | SELECT |
+| Escape | BACK (browser shortcut only) |
+| Mouse option | Highlight and select |
+| Nurse S / D | Mark top waiting request Seen / top seen request Done |
+
+Held keyboard repeats are ignored; SELECT has a 700 ms debounce. Nurse cards show
+waiting requests first, oldest within each status group, with Seen/Done controls
+and resolved history. Click Enable sound alerts to allow beeps for new requests;
+existing requests on initial load do not sound an alert.
+
+Stored statuses: PENDING -> ACKNOWLEDGED -> RESOLVED. Seen means acknowledged;
+Done means resolved. Repeating an action never moves status backwards. Identical
+active request types are coalesced; different types can remain active together.
+PENDING means saved by the backend, not that the nurse has seen it.
+
+## File responsibilities and shared interface
+
+| Files | Responsibility |
+| --- | --- |
+| backend/app.py | API, permissions, SQLite requests, device deduplication and leases |
+| backend/credentials.py, run.py, start.ps1, requirements.txt | Credential migration/loading, server startup and dependencies |
+| backend/simulate_device.py | Hardware-free command sender and heartbeat |
+| backend/tests/test_api.py, test_http.py | API/reliability tests and real HTTP simulator test |
+| backend/tests/browser_smoke.cjs | Patient/nurse browser integration checks |
+| frontend/index.html, patient/index.html, staff/index.html | Landing page and dashboard markup |
+| frontend/shared/api.js | Shared HTTP client, API_BASE, request labels and server-clock offset |
+| frontend/shared/common.js | Sessions, polling and connection indicators |
+| frontend/shared/input.js | Keyboard/mouse/device commands; fromDevice() is the ESP32 entry point |
+| frontend/shared/patient.js | Menu, confirmation, submission, retry and status screens |
+| frontend/shared/staff.js | Request ordering, Seen/Done, waiting timers and sound alerts |
+| frontend/shared/styles.css | Shared and screen-specific styles |
+| firmware/firmware.ino | Serial n/p/s transport demonstration; no GPIO acquisition |
+| firmware/EqualCareTransport.h/.cpp | Nonblocking emit interface and separate network worker |
+| firmware/config.example.h | Wi-Fi, server and device credential template |
+
+Full request/response schemas: [OpenAPI](../Documentation/openapi.json).
+Browser sign-in uses a session cookie; writes require X-CSRF-Token.
+Staff login sends role, login_id and password; patient login sends role and password.
+The shared API client handles these. Device calls use
+`Authorization: Bearer <device-token>`; the device token never belongs in frontend code.
+
+Firmware calls `transport.begin()` once, then
+`transport.emit(CareCommand::Next, CareSource::Joystick)` (or Previous/Select,
+and Eog). Emit once per debounced action from normal task context, not an ISR.
+A false return means discard the action; true means queued, not confirmed delivery.
+The worker uses an eight-event queue, one HTTP operation at a time and a
+two-second freshness window. The firmware team owns GPIOs, acquisition and classification.
+
+POST /api/v1/input-events with:
+
+```json
+{"device_id":"esp32-01","boot_id":"random-per-restart","seq":1,"source":"joystick","command":"NEXT"}
+```
+
+Retries reuse the same payload; seq increases across both input sources.
+Supported firmware commands are NEXT/PREVIOUS/SELECT; BACK is frontend-only.
+HTTP 200 with accepted:false means a handled duplicate/old event; stop retrying.
+Send POST /api/v1/heartbeat with device_id every five seconds.
+Device connectivity expires after 15 seconds.
+
+The patient polls input every 250 ms and statuses every second. Each page has its
+own X-Consumer-ID; only one consumes device input, with a three-second lease.
+After reconnect/refresh it synchronizes to the latest cursor and epoch rather
+than replaying old navigation. Backend events expire after two seconds and the
+buffer holds 128 events. Requests and retry keys persist in SQLite; navigation,
+sequence history and input leases reset when the backend restarts.
+
+## Simulator, tests and remaining hardware work
+
+With the backend running:
+
+```powershell
+& Code/backend/.venv/Scripts/python.exe Code/backend/simulate_device.py
+```
+
+Type n/p/s then Enter; q quits. Optional flags: --server http://IP:8000,
+--source eog, --device-id ID, or --commands NEXT SELECT.
+The simulator starts a heartbeat automatically.
 
 ```powershell
 & Code/backend/.venv/Scripts/python.exe -m pytest Code/backend/tests -q
+node Code/backend/tests/browser_smoke.cjs
 ```
 
-The browser end-to-end test (needs Microsoft Edge and the Node `playwright`
-package on `NODE_PATH`) is `node Code/backend/tests/browser_smoke.cjs`.
+The optional browser test requires Node's playwright package on NODE_PATH and
+installed Microsoft Edge. PYTHON can override its default venv interpreter.
+Tests use temporary databases and test credentials. Coverage includes lifecycle,
+retries, persistence, permissions, concurrent sends, expired/duplicate commands,
+confirmation/cancel, offline recovery and device-only navigation.
+
+BioAmp integration: electrodes -> BioAmp EXG Pill analog output -> ESP32
+sampling/filtering/calibration/gesture detection -> `transport.emit(...)` -> backend.
+After a confirmed eye gesture, emit one NEXT/PREVIOUS/SELECT with CareSource::Eog.
+Do not send every analog sample or repeatedly emit a held gesture. Joystick fallback
+uses the identical command contract. The backend does not process raw signals.
+
+Before physical integration, the hardware owner must provide the exact board
+model, GPIO/power wiring table, BioAmp output voltage range and joystick switch
+wiring. Verify ADC compatibility with Wi-Fi, thresholds, debounce, EOG
+calibration and fallback. Compile and check memory on the actual selected board.
+The hardware diagram requires isolated battery operation with no USB/charger
+attached during electrode use; Serial simulation is for bench testing without electrodes.
+Two physical laptops, actual ESP32 operation and the two-second feedback target
+on the team's LAN still need verification.
+
+Original flowchart/hardware diagram: [Documentation](../Documentation/).
+Supplier datasheets: [Reference_Data](../Reference_Data/).

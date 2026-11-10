@@ -1,41 +1,44 @@
-# MAKER'S ASYLUM INNOVATION SCHOOL
-## 2026 Winter Diwali COHORT #8 Team 2
-## BCI Gaming
-Brain control device that can be used to map game controls
+# EqualCare BCI
+Maker's Asylum Innovation School · 2026 Winter Diwali Cohort #8 · Team 2
 
-## STRUCTURE
-1. **CAD/**
-   - CAD design files
-   - e.g., `final_design.FCStd`, `step_file.STEP`
+Local patient-assistance prototype: one ESP32, one patient laptop running the
+backend, and one nurse laptop on the same Wi-Fi.
 
-2. **Code/**
-   - Arduino, Python, or other code files
-   - e.g., `arduino_code.ino`, `motor_control.py`
+```text
+Joystick / EOG -> ESP32 -> backend -> patient menu -> confirmed request
+                              ^                          |
+                              +-- nurse Seen / Done <----+
+```
 
-3. **Documentation/**
-   - Presentation slides, PDF reports, BoM
-   - e.g., `project_presentation.pptx`, `BOM.xlsx`
+The patient can request Water, Toilet assistance, Adjust position or Call nurse.
+The nurse sees waiting requests, marks them Seen and then Done; the patient
+screen shows progress. Game and OLED features are outside the current scope.
 
-4. **Electronics/**
-   - Circuit schematics or PCB layout images
-   - e.g., `schematic_diagram.jpg`
+**Start here:** [Setup, passwords and team guide](Code/README.md).
+**API contract:** [OpenAPI](Documentation/openapi.json).
 
-5. **Photos_Videos/**
-   - Images and videos
-   - e.g., `demo_video.mp4`, `prototype_photo.jpg`
-   - **Rename all photos and videos in sequential order, appending `TEAMNUMBER_PROJECT_NAME` to each asset.**
+| Location | Contents |
+| --- | --- |
+| Code/backend/ | Flask + SQLite API, launcher, simulator and tests |
+| Code/frontend/ | Connected patient/staff screens and shared JavaScript/CSS |
+| Code/firmware/ | ESP32 HTTP transport and Serial-input demo |
+| Documentation/ | Original flowchart, hardware block diagram and API contract |
+| Reference_Data/ | ESP32, BioAmp, joystick and OLED supplier datasheets |
+| Electronics/, CAD/, Photos_Videos/ | Placeholders for wiring, mechanical designs and demonstration media |
 
-6. **Reference_Data/**
-   - Downloaded data such as catalogs, data sheets, pinout diagrams, etc.
-   - e.g., `demo_video.mp4`, `prototype_photo.jpg`
+The original diagrams differ: the flowchart includes game/OLED behaviour; the
+hardware block diagram describes the patient/staff workflow implemented here.
+The implementation-plan DOCX was supplied outside the repository.
+Firmware currently provides transport only; actual wiring, joystick acquisition
+and EOG classification still require the hardware/firmware team.
 
-7. **WIKI**
-   - For more information about the project, check out our wiki
+## Licenses
 
-## License
+- Hardware: [CERN Open Hardware License v2 — Strongly Reciprocal](https://spdx.org/licenses/CERN-OHL-S-2.0.html).
+- Software: [MIT License](https://opensource.org/license/mit).
+- Documentation: [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/).
 
-- **Hardware:** [CERN Open Hardware License v2 - Strongly Reciprocal](https://spdx.org/licenses/CERN-OHL-S-2.0.html).
-- **Software:** [MIT License](https://opensource.org/license/mit).
-- **Documentation:** [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/).
-
-These are the licenses stated by the original README. A standalone LICENSE.md is not present in the reviewed repository; see the [wiki licensing page](https://github.com/MakersAsylumPrograms/IS2026_WI_Team02_BCI_gaming/wiki/License). Supplier datasheets retain their own notices.
+These are the original repository's stated licenses. No standalone LICENSE.md
+is present; see the [wiki licensing page](https://github.com/MakersAsylumPrograms/IS2026_WI_Team02_BCI_gaming/wiki/License).
+Supplier datasheets retain their own notices. Name new photos/videos sequentially
+and include the team number and project name.

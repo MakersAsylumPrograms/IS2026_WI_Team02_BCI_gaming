@@ -1,22 +1,9 @@
-// =====================================================================
-// staff.js — the nurse / staff dashboard.
-//
-// Every second we fetch all requests from the backend and redraw:
-//   "Needs attention": PENDING first (red), then ACKNOWLEDGED (amber),
-//                      oldest first inside each group
-//   "Resolved history": collapsed, newest first
-//
-// Buttons: "Seen" (PENDING -> ACKNOWLEDGED) and "Done" (ACKNOWLEDGED -> RESOLVED).
-// Shortcuts: S = Seen on the top waiting request, D = Done on the top seen one.
-// New requests: yellow banner + glow + beep (after "Enable sound alerts").
-// =====================================================================
 import {EqualCareAPI, typeInfo} from './api.js';
 import {$, setText, startPolling, createConnectionStatus, createSession} from './common.js';
 
 // ---- Settings (safe to tweak) ---------------------------------------
 // The backend is single-patient and has no bed/patient field, so every
 // request belongs to this one label.
-const PATIENT_LABEL = 'Bed 1';
 const OVERDUE_AFTER_MS = 2 * 60 * 1000;  // PENDING longer than this = extra emphasis
 const NEW_GLOW_MS = 8000;                // how long a new card glows yellow
 const ALERT_BANNER_MS = 10000;           // how long the "New request" banner stays
@@ -29,6 +16,7 @@ const connection = createConnectionStatus();
 
 // ---- State -----------------------------------------------------------
 const state = {
+  patientName: '',
   requests: [],            // latest list from the backend
   loaded: false,           // got the list at least once since sign-in?
   knownIds: new Set(),     // requests we've already alerted about
@@ -66,12 +54,11 @@ function resolvedRequests() {
     .sort((a, b) => toMs(b.resolved_at) - toMs(a.resolved_at));
 }
 
-// =====================================================================
 // Polling
-// =====================================================================
 async function refresh() {
   try {
-    const {requests} = await api.requests();
+    const {requests, patient} = await api.requests();
+    state.patientName = patient.name;
     alertForNew(requests);
     // If we just pressed Seen/Done, our copy may be newer than a poll that
     // started a moment earlier. Keep whichever was updated most recently.
@@ -100,7 +87,7 @@ function alertForNew(rows) {
 
   fresh.forEach(r => state.glowUntil.set(r.id, Date.now() + NEW_GLOW_MS));
   const banner = $('alert-banner');
-  banner.textContent = `🔔 New request: ${fresh.map(r => typeInfo(r.type).label).join(', ')} — ${PATIENT_LABEL}`;
+  banner.textContent = `🔔 New request: ${fresh.map(r => typeInfo(r.type).label).join(', ')} — ${state.patientName}`;
   banner.hidden = false;
   banner.classList.remove('alert');      // restart the flash animation
   void banner.offsetWidth;
@@ -110,9 +97,7 @@ function alertForNew(rows) {
   beep();
 }
 
-// =====================================================================
 // Seen / Done
-// =====================================================================
 async function act(id) {
   const row = state.requests.find(r => r.id === id);
   if (!row || row.status === 'RESOLVED' || state.busy.has(id)) return;   // nothing to do / already working
@@ -145,12 +130,6 @@ document.addEventListener('keydown', event => {
   if (target) { event.preventDefault(); act(target.id); }
 });
 
-// =====================================================================
-// Sound alerts
-// Browsers block sound until the user clicks something on the page, so
-// the nurse clicks "Enable sound alerts" once after opening the page.
-// We generate the beep with the Web Audio API (no sound file needed).
-// =====================================================================
 let audio = null;
 
 function beep() {
@@ -183,12 +162,6 @@ $('sound').addEventListener('click', () => {
   $('sound').classList.add('on');
 });
 
-// =====================================================================
-// Drawing
-// =====================================================================
-// Each request gets ONE card element that we keep and update. We don't
-// rebuild cards every second, because a click on a button that gets
-// replaced mid-click would be lost.
 function cardFor(row, now) {
   let card = cards.get(row.id);
   if (!card) {
@@ -227,7 +200,7 @@ function cardFor(row, now) {
   setText(icon, info.icon);
   setText(type, info.label);
   setText(badge, BADGE[row.status]);
-  setText(meta, `${PATIENT_LABEL} · ID ${row.id.slice(0, 8)} · requested ${clock(row.created_at)}`);
+  setText(meta, `${state.patientName} · ID ${row.id.slice(0, 8)} · requested ${clock(row.created_at)}`);
   meta.title = `Full request ID: ${row.id}`;
 
   if (row.status === 'PENDING') {
@@ -276,13 +249,11 @@ function render() {
 
   setText($('notice'), state.notice);
   setText($('device'), state.deviceConnected === null ? ''
-    : state.deviceConnected ? `${PATIENT_LABEL} ESP32 controller: connected`
-    : `${PATIENT_LABEL} ESP32 controller: not connected (patient can still use keyboard/mouse)`);
+    : state.deviceConnected ? `${state.patientName} ESP32 controller: connected`
+    : `${state.patientName} ESP32 controller: not connected (patient can still use keyboard/mouse)`);
 }
 
-// =====================================================================
 // Start / stop with sign-in
-// =====================================================================
 const session = createSession(api, 'staff', {
   onSignIn() {
     state.loaded = false;

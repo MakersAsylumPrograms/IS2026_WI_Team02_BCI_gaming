@@ -1,6 +1,5 @@
 """EqualCare backend: one process on the LAN. Requests persist in SQLite; device navigation stays in memory."""
 import hmac
-import os
 import secrets
 import sqlite3
 import threading
@@ -14,6 +13,8 @@ from pathlib import Path
 
 from flask import Flask, g, jsonify, request, send_from_directory, session
 from werkzeug.exceptions import HTTPException
+from werkzeug.security import check_password_hash, generate_password_hash
+from credentials import load_credentials
 
 # --- Constants ---------------------------------------------------------------
 
@@ -68,21 +69,23 @@ def create_app(config=None):
     # --- Configuration -------------------------------------------------------
     app = Flask(__name__, static_folder=FRONTEND / 'shared', static_url_path='/assets')
     app.config.update(
-        SECRET_KEY=os.environ.get('EQUALCARE_SECRET', secrets.token_hex(32)),
+        SECRET_KEY=secrets.token_hex(32),
         DATABASE=str(Path(__file__).parent / 'instance' / 'equalcare.sqlite3'),
-        PATIENT_PASSWORD=os.environ.get('EQUALCARE_PATIENT_PASSWORD'),
-        STAFF_PASSWORD=os.environ.get('EQUALCARE_STAFF_PASSWORD'),
-        DEVICE_TOKEN=os.environ.get('EQUALCARE_DEVICE_TOKEN'),
-        DEVICE_ID=os.environ.get('EQUALCARE_DEVICE_ID', 'esp32-01'),
+        STAFF_LOGIN_ID='staff', PATIENT_NAME='Bed 1', DEVICE_ID='esp32-01',
         MAX_CONTENT_LENGTH=4096, SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict', CLOCK=time.monotonic,
     )
-    if config:
-        app.config.update(config)
-    if any(not app.config[k] for k in ('PATIENT_PASSWORD', 'STAFF_PASSWORD', 'DEVICE_TOKEN')):
-        raise RuntimeError('Set EQUALCARE_PATIENT_PASSWORD, EQUALCARE_STAFF_PASSWORD and EQUALCARE_DEVICE_TOKEN.')
-    if app.config['PATIENT_PASSWORD'] == app.config['STAFF_PASSWORD']:
-        raise RuntimeError('Patient and staff passwords must differ.')
+    app.config.update(load_credentials()[0] if config is None else config)
+    # Explicit configuration is also used by tests; never retain plain passwords.
+    for role in ('PATIENT', 'STAFF'):
+        plain = app.config.pop(role + '_PASSWORD', None)
+        if plain is not None:
+            app.config[role + '_PASSWORD_HASH'] = generate_password_hash(plain)
+    if any(not app.config.get(k) for k in ('PATIENT_PASSWORD_HASH', 'STAFF_PASSWORD_HASH', 'DEVICE_TOKEN')):
+        raise RuntimeError('Patient/staff password hashes and device token are required.')
+
+    def patient_identity():
+        return dict(id='default', name=app.config['PATIENT_NAME'], device_id=app.config['DEVICE_ID'])
 
     # --- Storage and in-memory device state ----------------------------------
     Path(app.config['DATABASE']).parent.mkdir(parents=True, exist_ok=True)
@@ -167,16 +170,18 @@ def create_app(config=None):
             return error('INVALID_CLIENT', 'Dashboard header required.', 403)
         data = body()
         role, password = data.get('role'), data.get('password')
-        if role not in ('patient', 'staff') or not isinstance(password, str) or not matches(password, app.config[role.upper() + '_PASSWORD']):
+        if (role not in ('patient', 'staff') or not isinstance(password, str)
+                or (role == 'staff' and data.get('login_id') != app.config['STAFF_LOGIN_ID'])
+                or not check_password_hash(app.config[role.upper() + '_PASSWORD_HASH'], password)):
             return error('UNAUTHORIZED', 'Invalid credentials.', 401)
         session.clear()
         session.update(role=role, csrf=secrets.token_hex(24), sid=secrets.token_hex(24))
-        return jsonify(role=role, csrf=session['csrf'])
+        return jsonify(role=role, csrf=session['csrf'], patient=patient_identity())
 
     @app.get('/api/v1/session')
     @require('patient', 'staff')
     def get_session():
-        return jsonify(role=session['role'], csrf=session['csrf'])
+        return jsonify(role=session['role'], csrf=session['csrf'], patient=patient_identity())
 
     @app.delete('/api/v1/session')
     @require('patient', 'staff')
@@ -265,7 +270,7 @@ def create_app(config=None):
     @require('patient', 'staff')
     def requests_list():
         rows = db().execute('SELECT * FROM requests ORDER BY created_at, id').fetchall()
-        return jsonify(requests=[dict(row) for row in rows])
+        return jsonify(requests=[dict(row) for row in rows], patient=patient_identity())
 
     @app.post('/api/v1/requests')
     @require('patient')

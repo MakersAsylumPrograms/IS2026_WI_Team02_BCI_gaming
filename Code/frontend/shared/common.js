@@ -1,12 +1,3 @@
-// =====================================================================
-// common.js — small helpers shared by the patient and staff screens:
-//   $()                      shortcut for document.getElementById
-//   setText()                change text only if different (no flicker/re-announce)
-//   startPolling()          run a function every N ms, never overlapping
-//   createConnectionStatus() the "Connected / Reconnecting…" indicator
-//   createSession()          sign-in form, sign-out button, session restore
-// =====================================================================
-
 export const $ = id => document.getElementById(id);
 
 // Screen readers re-announce live regions on every write, so skip no-op writes.
@@ -14,12 +5,6 @@ export function setText(element, text) {
   if (element.textContent !== text) element.textContent = text;
 }
 
-// ---------------------------------------------------------------------
-// startPolling(fn, ms)
-// Calls `await fn()` then waits `ms`, forever, until stop() is called.
-// Because it waits for fn to finish first, two polls never overlap even
-// if the network is slow. Returns stop().
-// ---------------------------------------------------------------------
 export function startPolling(fn, ms) {
   let stopped = false;
   (async () => {
@@ -31,12 +16,6 @@ export function startPolling(fn, ms) {
   return () => { stopped = true; };
 }
 
-// ---------------------------------------------------------------------
-// createConnectionStatus()
-// Controls the pill in the top bar (#connection) and the red banner
-// (#offline-banner). Call ok() after every successful poll and failed()
-// after every failed one.
-// ---------------------------------------------------------------------
 export function createConnectionStatus() {
   const pill = $('connection');
   const banner = $('offline-banner');
@@ -60,22 +39,16 @@ export function createConnectionStatus() {
   };
 }
 
-// ---------------------------------------------------------------------
-// createSession(api, role, {onSignIn, onSignOut})
-//
-// Handles the sign-in form (#login, #password, #login-message), the
-// sign-out button (#logout) and the main area (#app).
-//   - On page load it asks the backend whether this browser is already
-//     signed in (so a refresh does not ask for the password again).
-//   - onSignIn()  is called when the screen should start working.
-//   - onSignOut() is called when it should stop (sign out / expired).
-// Returns {expire(message)} — call it when a poll gets HTTP 401.
-// ---------------------------------------------------------------------
 export function createSession(api, role, {onSignIn, onSignOut}) {
   const form = $('login'), password = $('password'), message = $('login-message');
+  const status = document.createElement('p');
+  status.setAttribute('role', 'status');
+  status.textContent = 'Restoring your session…';
+  form.before(status);
   let signedIn = false;
 
   function show(isSignedIn, text = '') {
+    status.textContent = '';
     form.hidden = isSignedIn;
     $('app').hidden = !isSignedIn;
     $('logout').hidden = !isSignedIn;
@@ -92,19 +65,22 @@ export function createSession(api, role, {onSignIn, onSignOut}) {
     event.preventDefault();
     message.textContent = 'Signing in…';
     try {
-      await api.login(role, password.value);
+      await api.login(role, password.value, $('login-id')?.value.trim());
       password.value = '';
       show(true);
     } catch (error) {
-      message.textContent = error.status === 401 ? 'Wrong password. Try again.'
+      message.textContent = error.status === 401 ? 'Incorrect login details. Try again.'
         : error.offline ? 'Cannot reach the EqualCare server. Check the address and Wi-Fi.'
         : error.message;
     }
   });
 
   $('logout').addEventListener('click', async () => {
-    try { await api.logout(); } catch { /* still sign out locally */ }
-    show(false, 'Signed out.');
+    try { await api.logout(); show(false, 'Signed out.'); }
+    catch (error) {
+      if (error.status === 401) show(false, 'Your session has ended.');
+      else status.textContent = 'Could not confirm sign out. Check the connection and try again.';
+    }
   });
 
   // On page load: are we still signed in? If the server is unreachable,
@@ -118,8 +94,8 @@ export function createSession(api, role, {onSignIn, onSignOut}) {
       show(false, `This browser is signed in as "${current.role}". ` +
                   `Sign in here, or use a private window for the other screen.`);
     } catch (error) {
-      if (error.offline) {
-        show(false, 'Cannot reach the EqualCare server. Retrying…');
+      if (error.status !== 401) {
+        status.textContent = 'Cannot restore your session yet. Reconnecting…';
         setTimeout(restore, 2000);
       } else {
         show(false);   // 401: simply not signed in yet

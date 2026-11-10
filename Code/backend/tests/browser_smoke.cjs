@@ -63,6 +63,7 @@ const DEBOUNCE = 800;   // a little more than SELECT_DEBOUNCE_MS in input.js
 
   for(const [page,role] of [[patient,'patient'],[staff,'staff']]) {
     await page.goto(base+'/'+role+'/');
+    if (role === 'staff') await page.locator('#login-id').fill('staff');
     await page.locator('#password').fill(role+'-test');
     await page.locator('#password').press('Enter');   // sign in with the keyboard
     await page.locator('#app').waitFor({state:'visible'});
@@ -174,6 +175,27 @@ const DEBOUNCE = 800;   // a little more than SELECT_DEBOUNCE_MS in input.js
   assert.equal((await rows()).filter(row=>row.type==='WATER' && row.status==='PENDING').length, 1);
 
   assert.deepEqual(errors,[]);
+  // Both dashboards restore their signed cookie after a normal reload.
+  for (const page of [patient, staff]) {
+    await page.reload();
+    await page.locator('#app').waitFor({state:'visible'});
+    assert.equal(await page.locator('#login').isVisible(), false);
+  }
+  const storedCookies = await patientContext.cookies();
+  assert.ok(storedCookies.some(cookie => cookie.name === 'session' && cookie.httpOnly));
+  // A failed logout must leave the app signed in and show an honest error.
+  await patient.route('**/api/v1/session', async route => {
+    if (route.request().method() === 'DELETE') await route.abort();
+    else await route.continue();
+  });
+  await patient.locator('#logout').click();
+  await until(async()=> (await patient.locator('p[role="status"]').allTextContents()).some(t=>t.includes('Could not confirm sign out')), 'logout error');
+  assert.equal(await patient.locator('#app').isVisible(), true);
+  await patient.unroute('**/api/v1/session');
+  await patient.locator('#logout').click();
+  await patient.locator('#login').waitFor({state:'visible'});
+  await patient.reload();
+  await patient.locator('#login').waitFor({state:'visible'});
   if(process.env.EQUALCARE_SCREENSHOT_DIR) {
     await patient.screenshot({path:path.join(process.env.EQUALCARE_SCREENSHOT_DIR,'equalcare-patient.png'),fullPage:true});
     await staff.screenshot({path:path.join(process.env.EQUALCARE_SCREENSHOT_DIR,'equalcare-staff.png'),fullPage:true});

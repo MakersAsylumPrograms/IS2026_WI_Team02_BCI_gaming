@@ -1,24 +1,3 @@
-// =====================================================================
-// api.js — the ONLY file that talks to the backend over HTTP.
-//
-// Both screens (patient + staff) import this. If an endpoint or field
-// name ever changes, this is the one place to update.
-// Backend contract: Documentation/openapi.json
-// =====================================================================
-
-// ---------------------------------------------------------------------
-// API_BASE — where the backend API lives. THE one setting for networking.
-//
-// Keep this a same-origin path ('/api/v1'). The backend serves these
-// pages AND the API from the same address, so whatever address you type
-// into the browser is automatically the backend address:
-//   patient laptop (runs the backend):  http://localhost:8000/patient/
-//   staff laptop (same hotspot):        http://<patient-laptop-IP>:8000/staff/
-//
-// Do NOT point this at another machine (e.g. 'http://192.168.1.5:8000/api/v1').
-// The backend deliberately disables CORS and uses SameSite=Strict cookies,
-// so a cross-origin API call would be blocked by the browser.
-// ---------------------------------------------------------------------
 export const API_BASE = '/api/v1';
 
 // Give up on a call after this long, so a dead network shows "Reconnecting"
@@ -39,10 +18,6 @@ export function typeInfo(type) {
   return REQUEST_TYPES.find(t => t.type === type) || {type, label: type, icon: '❓'};
 }
 
-// Every failed call throws one of these.
-//   status 0   -> we never got an answer (backend down, Wi-Fi gone, timeout)
-//   status 401 -> not signed in / session expired
-//   other      -> the backend answered with an error (see .code)
 export class ApiError extends Error {
   constructor(message, status, code) {
     super(message);
@@ -95,9 +70,9 @@ export class EqualCareAPI {
   serverNow() { return Date.now() + this.clockOffsetMs; }
 
   // ---- Session (sign in / out) ----
-  async login(role, password) {
+  async login(role, password, login_id) {
     const result = await this.call('/session', {
-      method: 'POST', body: {role, password},
+      method: 'POST', body: {role, password, ...(role === 'staff' ? {login_id} : {})},
       headers: {'X-EqualCare-Client': 'dashboard'},   // backend requires this header
     });
     this.csrf = result.csrf;

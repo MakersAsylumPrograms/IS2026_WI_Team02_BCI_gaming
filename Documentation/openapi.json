@@ -39,14 +39,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -70,11 +63,31 @@
                   },
                   "password": {
                     "type": "string"
+                  },
+                  "login_id": {
+                    "type": "string",
+                    "description": "Required for staff; default staff login ID is staff. Omit for patient."
                   }
                 },
                 "required": [
                   "role",
                   "password"
+                ],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "role": {
+                          "const": "staff"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "login_id"
+                      ]
+                    }
+                  }
                 ]
               }
             }
@@ -92,14 +105,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         },
         "parameters": [
@@ -111,7 +117,8 @@
               "const": "dashboard"
             }
           }
-        ]
+        ],
+        "description": "Patient: role + password. Staff: role + login_id + password. Cookie survives reloads during this backend run; backend restart invalidates it."
       },
       "get": {
         "summary": "Get current session and CSRF token",
@@ -132,14 +139,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       },
@@ -171,14 +171,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -232,14 +225,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -283,14 +269,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -342,14 +321,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       },
@@ -410,14 +382,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         },
         "parameters": [
@@ -475,24 +440,21 @@
                       "items": {
                         "$ref": "#/components/schemas/Request"
                       }
+                    },
+                    "patient": {
+                      "$ref": "#/components/schemas/Patient"
                     }
                   },
                   "required": [
-                    "requests"
+                    "requests",
+                    "patient"
                   ]
                 }
               }
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         }
       },
@@ -567,14 +529,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         },
         "description": "Keep the same key for an uncertain delivery. Reusing a key with another type returns 409. Different keys for the same active type alias to the existing request."
@@ -609,14 +564,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         },
         "parameters": [
@@ -662,14 +610,7 @@
             }
           },
           "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Error"
           }
         },
         "parameters": [
@@ -832,11 +773,34 @@
           },
           "csrf": {
             "type": "string"
+          },
+          "patient": {
+            "$ref": "#/components/schemas/Patient"
           }
         },
         "required": [
           "role",
-          "csrf"
+          "csrf",
+          "patient"
+        ]
+      },
+      "Patient": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "const": "default"
+          },
+          "name": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "device_id"
         ]
       }
     },
@@ -854,6 +818,18 @@
       "deviceToken": {
         "type": "http",
         "scheme": "bearer"
+      }
+    },
+    "responses": {
+      "Error": {
+        "description": "Error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       }
     }
   }
