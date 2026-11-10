@@ -3,21 +3,6 @@
 ## BCI Gaming
 Brain control device that can be used to map game controls
 
-## EqualCare patient-assistance prototype
-
-The current software prototype implements patient requests and nurse
-acknowledgement/resolution over local Wi-Fi. Game/OLED work is outside this scope.
-
-- [Team setup and integration guide](Documentation/INTEGRATION.md)
-- [Versioned OpenAPI contract](Documentation/openapi.json)
-- [Hardware wiring handoff](Documentation/WIRING_HANDOFF.md)
-- Backend: `Code/backend/`; replaceable dashboards: `Code/frontend/`;
-  ESP32 transport adapter: `Code/firmware/`.
-
-Windows quick start: run `Code/backend/start.ps1`. The first run provisions local
-credentials. Open `http://localhost:8000` on the host laptop. See the integration
-guide for the second laptop, firmware configuration, simulators, and tests.
-
 ## STRUCTURE
 1. **CAD/**
    - CAD design files
@@ -49,25 +34,8 @@ guide for the second laptop, firmware configuration, simulators, and tests.
 
 ## License
 
-Licenses
+- **Hardware:** [CERN Open Hardware License v2 - Strongly Reciprocal](https://spdx.org/licenses/CERN-OHL-S-2.0.html).
+- **Software:** [MIT License](https://opensource.org/license/mit).
+- **Documentation:** [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/).
 
-<a href="LICENSE.md"><img src="Licenses_facts.svg" width="400" alt="Open Source Licenses Facts"/></a>
-
-#### Hardware
-CERN Open Hardware License Version 2 - Strongly Reciprocal ([CERN-OHL-S-2.0](https://spdx.org/licenses/CERN-OHL-S-2.0.html)).
-
-#### Software
-MIT open source [license](http://opensource.org/licenses/MIT).
-
-#### Documentation:
-<a rel="license" href="http://creativecommons.org/licenses/by/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a>.
-
----
-
-## 📬 Contact/Team
-
-> _List team members and contact emails or GitHub profiles._
-[@anool](https://github.com/Anool)
-> 
->
-> ---
+These are the licenses stated by the original README. A standalone LICENSE.md is not present in the reviewed repository; see the [wiki licensing page](https://github.com/MakersAsylumPrograms/IS2026_WI_Team02_BCI_gaming/wiki/License). Supplier datasheets retain their own notices.
