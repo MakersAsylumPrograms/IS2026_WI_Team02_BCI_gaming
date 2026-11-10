@@ -18,7 +18,7 @@
 // =====================================================================
 import {EqualCareAPI, REQUEST_TYPES, typeInfo, newId} from './api.js';
 import {createInput, startDevicePolling, NEXT, PREVIOUS, SELECT, BACK} from './input.js';
-import {$, startPolling, createConnectionStatus, createSession} from './common.js';
+import {$, setText, startPolling, createConnectionStatus, createSession} from './common.js';
 
 // ---- Settings (safe to tweak) ---------------------------------------
 // On the confirm screen both "Confirm" and "Cancel" are shown. This picks
@@ -279,10 +279,6 @@ function recoverAfterLoad() {
 // Drawing
 // =====================================================================
 let lastOptionsKey = '';
-
-function setText(element, text) {
-  if (element.textContent !== text) element.textContent = text;   // avoids re-announcing
-}
 
 function render() {
   if (!state.signedIn) return;

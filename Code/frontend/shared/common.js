@@ -1,12 +1,18 @@
 // =====================================================================
 // common.js — small helpers shared by the patient and staff screens:
 //   $()                      shortcut for document.getElementById
-//   startPolling()           run a function every N ms, never overlapping
+//   setText()                change text only if different (no flicker/re-announce)
+//   startPolling()          run a function every N ms, never overlapping
 //   createConnectionStatus() the "Connected / Reconnecting…" indicator
 //   createSession()          sign-in form, sign-out button, session restore
 // =====================================================================
 
 export const $ = id => document.getElementById(id);
+
+// Screen readers re-announce live regions on every write, so skip no-op writes.
+export function setText(element, text) {
+  if (element.textContent !== text) element.textContent = text;
+}
 
 // ---------------------------------------------------------------------
 // startPolling(fn, ms)

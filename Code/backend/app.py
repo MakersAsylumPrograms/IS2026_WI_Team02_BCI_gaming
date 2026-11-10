@@ -1,4 +1,4 @@
-"""Single-process LAN prototype. Durable requests, ephemeral device navigation."""
+"""EqualCare backend: one process on the LAN. Requests persist in SQLite; device navigation stays in memory."""
 import hmac
 import os
 import secrets
@@ -7,15 +7,40 @@ import threading
 import time
 import uuid
 from collections import deque
+from contextlib import closing
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, session
+from flask import Flask, g, jsonify, request, send_from_directory, session
 from werkzeug.exceptions import HTTPException
+
+# --- Constants ---------------------------------------------------------------
 
 TYPES = ('WATER', 'TOILET_ASSISTANCE', 'REPOSITIONING', 'CALL_NURSE')
 COMMANDS = ('NEXT', 'PREVIOUS', 'SELECT')
+SOURCES = ('joystick', 'eog')
+# action: (required status, new status, timestamp column)
+TRANSITIONS = {'acknowledge': ('PENDING', 'ACKNOWLEDGED', 'acknowledged_at'),
+               'resolve': ('ACKNOWLEDGED', 'RESOLVED', 'resolved_at')}
+EVENT_TTL = 2        # seconds a device command stays deliverable
+LEASE = 3            # seconds one patient screen owns device input
+OFFLINE_AFTER = 15   # seconds without heartbeat before the ESP32 shows offline
+FRONTEND = Path(__file__).parent.parent / 'frontend'
+SCHEMA = '''
+    PRAGMA journal_mode=WAL;
+    CREATE TABLE IF NOT EXISTS requests (
+      id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      acknowledged_at TEXT, resolved_at TEXT);
+    CREATE UNIQUE INDEX IF NOT EXISTS active_type ON requests(type)
+      WHERE status != 'RESOLVED';
+    CREATE TABLE IF NOT EXISTS idempotency (
+      key TEXT PRIMARY KEY, type TEXT NOT NULL,
+      request_id TEXT NOT NULL REFERENCES requests(id));
+'''
+
+# --- Helpers -----------------------------------------------------------------
 
 
 def utc():
@@ -26,8 +51,22 @@ def matches(left, right):
     return hmac.compare_digest(left.encode('utf-8'), right.encode('utf-8'))
 
 
+def error(code, message, status):
+    return jsonify(error=dict(code=code, message=message)), status
+
+
+def body():
+    value = request.get_json(silent=True)
+    return value if isinstance(value, dict) else {}
+
+
+def identifier(value):
+    return isinstance(value, str) and 1 <= len(value) <= 128 and value.isascii() and all(c.isalnum() or c in '-_.' for c in value)
+
+
 def create_app(config=None):
-    app = Flask(__name__)
+    # --- Configuration -------------------------------------------------------
+    app = Flask(__name__, static_folder=FRONTEND / 'shared', static_url_path='/assets')
     app.config.update(
         SECRET_KEY=os.environ.get('EQUALCARE_SECRET', secrets.token_hex(32)),
         DATABASE=str(Path(__file__).parent / 'instance' / 'equalcare.sqlite3'),
@@ -44,44 +83,41 @@ def create_app(config=None):
         raise RuntimeError('Set EQUALCARE_PATIENT_PASSWORD, EQUALCARE_STAFF_PASSWORD and EQUALCARE_DEVICE_TOKEN.')
     if app.config['PATIENT_PASSWORD'] == app.config['STAFF_PASSWORD']:
         raise RuntimeError('Patient and staff passwords must differ.')
+
+    # --- Storage and in-memory device state ----------------------------------
     Path(app.config['DATABASE']).parent.mkdir(parents=True, exist_ok=True)
 
     def connect():
-        db = sqlite3.connect(app.config['DATABASE'], timeout=5)
-        db.row_factory = sqlite3.Row
-        db.execute('PRAGMA foreign_keys=ON')
-        return db
+        conn = sqlite3.connect(app.config['DATABASE'], timeout=5)
+        conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA foreign_keys=ON')
+        return conn
 
-    db = connect()
-    db.executescript('''
-        PRAGMA journal_mode=WAL;
-        CREATE TABLE IF NOT EXISTS requests (
-          id TEXT PRIMARY KEY, type TEXT NOT NULL, status TEXT NOT NULL,
-          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-          acknowledged_at TEXT, resolved_at TEXT);
-        CREATE UNIQUE INDEX IF NOT EXISTS active_type ON requests(type)
-          WHERE status != 'RESOLVED';
-        CREATE TABLE IF NOT EXISTS idempotency (
-          key TEXT PRIMARY KEY, type TEXT NOT NULL,
-          request_id TEXT NOT NULL REFERENCES requests(id));
-    ''')
-    db.close()
+    with closing(connect()) as conn:
+        conn.executescript(SCHEMA)
+
+    def db():
+        # One connection per request; closing it rolls back any uncommitted transaction.
+        if 'db' not in g:
+            g.db = connect()
+        return g.db
+
+    @app.teardown_appcontext
+    def close_db(_):
+        conn = g.pop('db', None)
+        if conn is not None:
+            conn.close()
+
+    def find(rid):
+        return db().execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
+
     lock = threading.RLock()
     clock = app.config['CLOCK']
     state = dict(events=deque(maxlen=128), cursor=0, epoch=str(uuid.uuid4()),
                  boot=None, seq=-1, retired=set(), last_seen=None, consumer=None, lease=0)
     app.extensions['input_state'] = state
 
-    def error(code, message, status):
-        return jsonify(error=dict(code=code, message=message)), status
-
-    def body():
-        value = request.get_json(silent=True)
-        return value if isinstance(value, dict) else {}
-
-    def identifier(value):
-        return isinstance(value, str) and 1 <= len(value) <= 128 and value.isascii() and all(c.isalnum() or c in '-_.' for c in value)
-
+    # --- Auth, errors and headers --------------------------------------------
     def require(*roles):
         def decorator(fn):
             @wraps(fn)
@@ -118,13 +154,10 @@ def create_app(config=None):
         response.headers['Content-Security-Policy'] = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'"
         return response
 
+    # --- Health and sessions -------------------------------------------------
     @app.get('/api/v1/health')
     def health():
-        db = connect()
-        try:
-            db.execute('SELECT count(*) FROM requests').fetchone()
-        finally:
-            db.close()
+        db().execute('SELECT count(*) FROM requests')
         return jsonify(status='ok', version='1')
 
     @app.post('/api/v1/session')
@@ -133,8 +166,7 @@ def create_app(config=None):
         if request.headers.get('X-EqualCare-Client') != 'dashboard':
             return error('INVALID_CLIENT', 'Dashboard header required.', 403)
         data = body()
-        role = data.get('role')
-        password = data.get('password')
+        role, password = data.get('role'), data.get('password')
         if role not in ('patient', 'staff') or not isinstance(password, str) or not matches(password, app.config[role.upper() + '_PASSWORD']):
             return error('UNAUTHORIZED', 'Invalid credentials.', 401)
         session.clear()
@@ -155,6 +187,7 @@ def create_app(config=None):
         session.clear()
         return jsonify(ok=True)
 
+    # --- ESP32 device API ----------------------------------------------------
     @app.post('/api/v1/heartbeat')
     @device
     def heartbeat():
@@ -169,8 +202,8 @@ def create_app(config=None):
     def input_event():
         data = body()
         if (data.get('device_id') != app.config['DEVICE_ID'] or not identifier(data.get('boot_id'))
-            or type(data.get('seq')) is not int or not 0 <= data['seq'] <= 2147483647
-            or data.get('source') not in ('joystick', 'eog') or data.get('command') not in COMMANDS):
+                or type(data.get('seq')) is not int or not 0 <= data['seq'] <= 2147483647
+                or data.get('source') not in SOURCES or data.get('command') not in COMMANDS):
             return error('INVALID_EVENT', 'Invalid device, boot_id, seq, source or command.', 400)
         with lock:
             state['last_seen'] = clock()
@@ -196,45 +229,43 @@ def create_app(config=None):
     @app.get('/api/v1/input-events')
     @require('patient')
     def events():
-        after = request.args.get('after')
-        if after is not None and (not after.isdigit() or len(after) > 16):
-            return error('INVALID_CURSOR', 'after must be a non-negative integer.', 400)
+        after, consumer = request.args.get('after'), request.headers.get('X-Consumer-ID')
+        if after is not None:
+            if not after.isdecimal() or len(after) > 16:
+                return error('INVALID_CURSOR', 'after must be a non-negative integer.', 400)
+            after = int(after)
+        if not identifier(consumer):
+            return error('INVALID_CONSUMER', 'Provide X-Consumer-ID for this page instance.', 400)
+        owner = session['sid'] + ':' + consumer
         with lock:
             now = clock()
-            owner = session['sid'] + ':' + request.headers.get('X-Consumer-ID', '')
-            if not identifier(request.headers.get('X-Consumer-ID')):
-                return error('INVALID_CONSUMER', 'Provide X-Consumer-ID for this page instance.', 400)
             if state['consumer'] != owner and state['lease'] > now:
                 return error('CONSUMER_BUSY', 'Another patient screen controls device input.', 409)
-            fresh = state['consumer'] != owner or state['lease'] <= now
-            state.update(consumer=owner, lease=now + 3)
-            reset = fresh or after is None or request.args.get('epoch') != state['epoch'] or int(after) > state['cursor']
-            if not reset and state['events']:
-                # Never deliver SELECT after silently losing earlier navigation.
-                reset = int(after) < state['events'][0]['cursor'] - 1 or any(
-                    e['cursor'] > int(after) and now - e['received'] >= 2 for e in state['events'])
-            selected = [] if reset else [
-                {k: v for k, v in e.items() if k != 'received'} for e in state['events']
-                if e['cursor'] > int(after) and now - e['received'] < 2]
-            return jsonify(events=selected, cursor=state['cursor'], epoch=state['epoch'], reset=reset)
+            # A new or expired lease resynchronises instead of replaying old input.
+            reset = (state['lease'] <= now or after is None or after > state['cursor']
+                     or request.args.get('epoch') != state['epoch'])
+            state.update(consumer=owner, lease=now + LEASE)
+            newer = [] if reset else [e for e in state['events'] if e['cursor'] > after]
+            # Never deliver SELECT after silently losing earlier navigation (overflow or expiry).
+            if newer and (newer[0]['cursor'] != after + 1 or any(now - e['received'] >= EVENT_TTL for e in newer)):
+                reset, newer = True, []
+            return jsonify(events=[{k: v for k, v in e.items() if k != 'received'} for e in newer],
+                           cursor=state['cursor'], epoch=state['epoch'], reset=reset)
 
     @app.get('/api/v1/device')
     @require('patient', 'staff')
     def device_status():
         with lock:
             age = None if state['last_seen'] is None else clock() - state['last_seen']
-            return jsonify(device_id=app.config['DEVICE_ID'], connected=age is not None and age < 15,
-                           seconds_since_seen=age)
+        return jsonify(device_id=app.config['DEVICE_ID'], connected=age is not None and age < OFFLINE_AFTER,
+                       seconds_since_seen=age)
 
+    # --- Care requests -------------------------------------------------------
     @app.get('/api/v1/requests')
     @require('patient', 'staff')
     def requests_list():
-        db = connect()
-        try:
-            rows = db.execute('SELECT * FROM requests ORDER BY created_at, id').fetchall()
-            return jsonify(requests=[dict(row) for row in rows])
-        finally:
-            db.close()
+        rows = db().execute('SELECT * FROM requests ORDER BY created_at, id').fetchall()
+        return jsonify(requests=[dict(row) for row in rows])
 
     @app.post('/api/v1/requests')
     @require('patient')
@@ -243,69 +274,49 @@ def create_app(config=None):
         kind, key = data.get('type'), data.get('idempotency_key')
         if kind not in TYPES or not identifier(key):
             return error('INVALID_REQUEST', 'Valid type and idempotency_key are required.', 400)
-        db = connect()
-        try:
-            db.execute('BEGIN IMMEDIATE')
-            prior = db.execute('SELECT * FROM idempotency WHERE key=?', (key,)).fetchone()
-            if prior and prior['type'] != kind:
-                return error('IDEMPOTENCY_CONFLICT', 'Key was used for a different request type.', 409)
-            row = db.execute('SELECT * FROM requests WHERE id=?', (prior['request_id'],)).fetchone() if prior else db.execute("SELECT * FROM requests WHERE type=? AND status!='RESOLVED'", (kind,)).fetchone()
-            created = row is None
-            if created:
-                rid, now = str(uuid.uuid4()), utc()
-                db.execute('INSERT INTO requests VALUES (?,?,?,?,?,?,?)', (rid, kind, 'PENDING', now, now, None, None))
-                row = db.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
-            if not prior:
-                db.execute('INSERT INTO idempotency VALUES (?,?,?)', (key, kind, row['id']))
-            db.commit()
-            return jsonify(request=dict(row)), 201 if created else 200
-        finally:
-            db.close()
+        conn = db()
+        conn.execute('BEGIN IMMEDIATE')
+        prior = conn.execute('SELECT * FROM idempotency WHERE key=?', (key,)).fetchone()
+        if prior and prior['type'] != kind:
+            return error('IDEMPOTENCY_CONFLICT', 'Key was used for a different request type.', 409)
+        if prior:
+            row = find(prior['request_id'])
+        else:  # Another key for an already active type maps to that request.
+            row = conn.execute("SELECT * FROM requests WHERE type=? AND status!='RESOLVED'", (kind,)).fetchone()
+        created = row is None
+        if created:
+            rid, now = str(uuid.uuid4()), utc()
+            conn.execute('INSERT INTO requests VALUES (?,?,?,?,?,?,?)', (rid, kind, 'PENDING', now, now, None, None))
+            row = find(rid)
+        if not prior:
+            conn.execute('INSERT INTO idempotency VALUES (?,?,?)', (key, kind, row['id']))
+        conn.commit()
+        return jsonify(request=dict(row)), 201 if created else 200
 
-    @app.post('/api/v1/requests/<rid>/<action>')
+    @app.post('/api/v1/requests/<rid>/<any(acknowledge, resolve):action>')
     @require('staff')
     def transition(rid, action):
-        if action not in ('acknowledge', 'resolve'):
-            return error('NOT_FOUND', 'Unknown action.', 404)
-        db = connect()
-        try:
-            db.execute('BEGIN IMMEDIATE')
-            row = db.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()
-            if row is None:
-                return error('NOT_FOUND', 'Unknown request.', 404)
-            status = row['status']
-            if action == 'resolve' and status == 'PENDING':
-                return error('INVALID_TRANSITION', 'Acknowledge before resolving.', 409)
-            if action == 'acknowledge' and status == 'PENDING':
-                now = utc()
-                db.execute("UPDATE requests SET status='ACKNOWLEDGED', acknowledged_at=?, updated_at=? WHERE id=?", (now, now, rid))
-            if action == 'resolve' and status == 'ACKNOWLEDGED':
-                now = utc()
-                db.execute("UPDATE requests SET status='RESOLVED', resolved_at=?, updated_at=? WHERE id=?", (now, now, rid))
-            db.commit()
-            return jsonify(request=dict(db.execute('SELECT * FROM requests WHERE id=?', (rid,)).fetchone()))
-        finally:
-            db.close()
+        required, new, column = TRANSITIONS[action]
+        conn = db()
+        conn.execute('BEGIN IMMEDIATE')
+        row = find(rid)
+        if row is None:
+            return error('NOT_FOUND', 'Unknown request.', 404)
+        if action == 'resolve' and row['status'] == 'PENDING':
+            return error('INVALID_TRANSITION', 'Acknowledge before resolving.', 409)
+        if row['status'] == required:  # Repeated actions are no-ops, so status never regresses.
+            now = utc()
+            conn.execute(f'UPDATE requests SET status=?, {column}=?, updated_at=? WHERE id=?', (new, now, now, rid))
+        conn.commit()
+        return jsonify(request=dict(find(rid)))
 
-    frontend = Path(__file__).parent.parent / 'frontend'
-
+    # --- Dashboards (shared JS/CSS served from /assets) ----------------------
     @app.get('/')
     def home():
-        return send_from_directory(frontend, 'index.html')
+        return send_from_directory(FRONTEND, 'index.html')
 
-    @app.get('/<role>/')
+    @app.get('/<any(patient, staff):role>/')
     def dashboard(role):
-        if role not in ('patient', 'staff'):
-            return error('NOT_FOUND', 'Unknown dashboard.', 404)
-        return send_from_directory(frontend / role, 'index.html')
-
-    @app.get('/assets/<path:name>')
-    def assets(name):
-        return send_from_directory(frontend / 'shared', name)
+        return send_from_directory(FRONTEND / role, 'index.html')
 
     return app
-
-
-if __name__ == '__main__':
-    from waitress import serve
-    serve(create_app(), host='0.0.0.0', port=8000, threads=8)

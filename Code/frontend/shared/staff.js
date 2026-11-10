@@ -11,7 +11,7 @@
 // New requests: yellow banner + glow + beep (after "Enable sound alerts").
 // =====================================================================
 import {EqualCareAPI, typeInfo} from './api.js';
-import {$, startPolling, createConnectionStatus, createSession} from './common.js';
+import {$, setText, startPolling, createConnectionStatus, createSession} from './common.js';
 
 // ---- Settings (safe to tweak) ---------------------------------------
 // The backend is single-patient and has no bed/patient field, so every
@@ -186,10 +186,6 @@ $('sound').addEventListener('click', () => {
 // =====================================================================
 // Drawing
 // =====================================================================
-function setText(element, text) {
-  if (element.textContent !== text) element.textContent = text;
-}
-
 // Each request gets ONE card element that we keep and update. We don't
 // rebuild cards every second, because a click on a button that gets
 // replaced mid-click would be lost.

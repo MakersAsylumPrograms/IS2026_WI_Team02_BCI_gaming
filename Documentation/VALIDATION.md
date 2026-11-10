@@ -8,11 +8,14 @@ Completed on Windows with Python 3.12, Flask 3.1.3, Waitress 3.0.2 and pytest 9.
   consumer leases, lost navigation and buffer overflow were exercised.
 - **Real HTTP interoperability passed.** The Python device simulator sent NEXT
   and SELECT through a temporary Waitress listener using the firmware JSON contract.
-- **Headless Microsoft Edge integration passed.** Separate patient/staff sessions
-  completed request/acknowledge/resolve; a deliberately lost response was retried
-  after refresh without duplication; offline recovery, exclusive input consumption,
-  and device-driven navigation passed without JavaScript page errors.
-- Patient and nurse screenshots were visually inspected. Python compilation,
+- **Headless Microsoft Edge integration passed** against the current patient and
+  staff screens: held-key handling, confirm/cancel, the full Seen/Done loop, double
+  SELECT debounce, a deliberately lost response retried after refresh without
+  duplication, two concurrent requests, offline recovery, exclusive input
+  consumption and a NEXT+SELECT device-only flow, with no JavaScript page errors.
+- `run.py` first-run credential provisioning and the interactive simulator (n/p/s
+  against a running server) were checked by hand with throwaway credentials.
+- Patient and staff screenshots were visually inspected. Python compilation,
   JavaScript syntax checks, OpenAPI JSON parsing and Git whitespace checks passed.
 
 Test servers used temporary databases and test-only credentials and were stopped

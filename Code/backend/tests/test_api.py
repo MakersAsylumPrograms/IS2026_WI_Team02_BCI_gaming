@@ -88,6 +88,7 @@ def test_roles_csrf_and_validation(system):
     assert submit(patient, ph).status_code == 201
     assert submit(patient, ph, kind='CALL_NURSE').status_code == 409
     assert patient.get('/api/v1/input-events?after=-1').status_code == 400
+    assert patient.get('/api/v1/input-events?after=²').status_code == 400
     assert staff.post('/api/v1/requests/missing/resolve', headers=sh).status_code == 404
 
 
