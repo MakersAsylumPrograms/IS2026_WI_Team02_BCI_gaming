@@ -60,3 +60,10 @@ _autosave-*
 
 # Version Control History
 /.history
+
+# EqualCare local runtime and credentials
+.venv/
+.pytest_cache/
+.env
+Code/backend/instance/
+Code/firmware/config.h

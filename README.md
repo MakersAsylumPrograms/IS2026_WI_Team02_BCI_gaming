@@ -3,6 +3,21 @@
 ## BCI Gaming
 Brain control device that can be used to map game controls
 
+## EqualCare patient-assistance prototype
+
+The current software prototype implements patient requests and nurse
+acknowledgement/resolution over local Wi-Fi. Game/OLED work is outside this scope.
+
+- [Team setup and integration guide](Documentation/INTEGRATION.md)
+- [Versioned OpenAPI contract](Documentation/openapi.json)
+- [Hardware wiring handoff](Documentation/WIRING_HANDOFF.md)
+- Backend: `Code/backend/`; replaceable dashboards: `Code/frontend/`;
+  ESP32 transport adapter: `Code/firmware/`.
+
+Windows quick start: run `Code/backend/start.ps1`. The first run provisions local
+credentials. Open `http://localhost:8000` on the host laptop. See the integration
+guide for the second laptop, firmware configuration, simulators, and tests.
+
 ## STRUCTURE
 1. **CAD/**
    - CAD design files
