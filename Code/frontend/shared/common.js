@@ -77,6 +77,9 @@ export function createSession(api, role, {onSignIn, onSignOut}) {
     if (isSignedIn && !signedIn) { signedIn = true; onSignIn(); }
     if (!isSignedIn && signedIn) { signedIn = false; onSignOut(); }
     if (!isSignedIn) password.focus();
+    // After signing in, move focus off the (now hidden) password box,
+    // otherwise input.js would treat arrow keys as typing and ignore them.
+    else document.activeElement?.blur();
   }
 
   form.addEventListener('submit', async event => {
