@@ -79,7 +79,7 @@ plaintext entry. Never type a readable password into a `_PASSWORD_HASH` field.
 Environment overrides EQUALCARE_PATIENT_PASSWORD, EQUALCARE_STAFF_PASSWORD,
 EQUALCARE_STAFF_LOGIN_ID, EQUALCARE_PATIENT_NAME, EQUALCARE_DEVICE_ID and
 EQUALCARE_DEVICE_TOKEN apply to that process only and take precedence over the file.
-The old EQUALCARE_SECRET setting is unused. The simulator reads the saved device
+The simulator reads the saved device
 token unless its terminal overrides EQUALCARE_DEVICE_TOKEN.
 
 ## Wi-Fi and ESP32 configuration

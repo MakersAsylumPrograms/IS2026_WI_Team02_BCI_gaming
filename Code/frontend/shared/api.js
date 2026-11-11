@@ -1,4 +1,4 @@
-export const API_BASE = '/api/v1';
+const API_BASE = '/api/v1';
 
 // Give up on a call after this long, so a dead network shows "Reconnecting"
 // quickly instead of hanging. Polls run every 1 s, so keep this under ~2 s.

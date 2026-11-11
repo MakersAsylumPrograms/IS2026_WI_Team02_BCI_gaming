@@ -31,7 +31,6 @@ def load_credentials(path=CREDENTIALS):
                 plain = secrets.token_urlsafe(18)
                 issued[role + '_PASSWORD'] = plain
             data[role + '_PASSWORD_HASH'] = generate_password_hash(plain)
-    data.pop('SECRET', None)  # Browser sessions now last only for this backend run.
     data.setdefault('STAFF_LOGIN_ID', 'staff')
     data.setdefault('PATIENT_NAME', 'Bed 1')
     data.setdefault('DEVICE_ID', 'esp32-01')

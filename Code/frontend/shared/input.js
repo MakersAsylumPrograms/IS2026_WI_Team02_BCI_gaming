@@ -15,7 +15,7 @@ const KEY_MAP = {
 
 // Two SELECTs closer together than this count as one. This stops a
 // double-press, double-click or a noisy gesture from submitting twice.
-export const SELECT_DEBOUNCE_MS = 700;
+const SELECT_DEBOUNCE_MS = 700;
 
 export function createInput(handleCommand) {
   let lastSelectAt = -Infinity;

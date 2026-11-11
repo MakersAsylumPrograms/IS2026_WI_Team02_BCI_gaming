@@ -2,8 +2,6 @@ import {EqualCareAPI, ApiError, typeInfo} from './api.js';
 import {$, setText, startPolling, createConnectionStatus, createSession} from './common.js';
 
 // ---- Settings (safe to tweak) ---------------------------------------
-// The backend is single-patient and has no bed/patient field, so every
-// request belongs to this one label.
 const OVERDUE_AFTER_MS = 2 * 60 * 1000;  // PENDING longer than this = extra emphasis
 const NEW_GLOW_MS = 8000;                // how long a new card glows yellow
 const ALERT_BANNER_MS = 10000;           // how long the "New request" banner stays

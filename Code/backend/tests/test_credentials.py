@@ -11,7 +11,7 @@ from credentials import load_credentials
 def test_migration_preserves_passwords_token_and_settings(tmp_path):
     path = tmp_path / 'credentials.json'
     path.write_text(json.dumps(dict(PATIENT_PASSWORD='old-patient', STAFF_PASSWORD='old-staff',
-                                   DEVICE_TOKEN='old-token', SECRET='obsolete', DEVICE_ID='original-device')))
+                                   DEVICE_TOKEN='old-token', DEVICE_ID='original-device')))
     config, issued = load_credentials(path)
     assert not issued
     assert check_password_hash(config['PATIENT_PASSWORD_HASH'], 'old-patient')
@@ -19,7 +19,7 @@ def test_migration_preserves_passwords_token_and_settings(tmp_path):
     assert config['DEVICE_TOKEN'] == 'old-token' and config['DEVICE_ID'] == 'original-device'
     assert config['STAFF_LOGIN_ID'] == 'staff'
     saved = path.read_text()
-    assert 'old-patient' not in saved and 'old-staff' not in saved and 'SECRET' not in saved
+    assert 'old-patient' not in saved and 'old-staff' not in saved
     assert load_credentials(path)[0] == config
     assert path.read_text() == saved
 
