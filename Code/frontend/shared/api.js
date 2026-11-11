@@ -28,20 +28,25 @@ export class ApiError extends Error {
 }
 
 export class EqualCareAPI {
-  constructor() {
+  // role: 'patient' or 'staff'. Sent with every call so both screens can be
+  // signed in at once in the same browser (tabs share one session cookie).
+  constructor(role) {
+    this.role = role;
     this.csrf = '';           // anti-forgery token; must be sent on every write
     this.clockOffsetMs = 0;   // serverTime - thisLaptopTime (see serverNow())
   }
 
   // Low-level helper used by every method below.
-  async call(path, {method = 'GET', body, headers = {}} = {}) {
+  async call(path, options = {}, retried = false) {
+    const {method = 'GET', body, headers = {}} = options;
     let response;
     try {
       response = await fetch(API_BASE + path, {
         method,
         credentials: 'same-origin',   // send the session cookie
         cache: 'no-store',
-        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf, ...headers},
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': this.csrf,
+                  'X-EqualCare-Role': this.role, ...headers},
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
@@ -60,6 +65,12 @@ export class EqualCareAPI {
     try { value = await response.json(); } catch { /* non-JSON body */ }
 
     if (!response.ok) {
+      // Signing in again (e.g. in another tab) issues a new anti-forgery token.
+      // Fetch it and retry once; every write here is safe to repeat.
+      if (response.status === 403 && value.error?.code === 'CSRF' && !retried) {
+        await this.session();
+        return this.call(path, options, true);
+      }
       throw new ApiError(value.error?.message || `Server error (${response.status}).`,
                          response.status, value.error?.code);
     }

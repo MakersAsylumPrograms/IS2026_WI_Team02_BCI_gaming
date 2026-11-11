@@ -87,12 +87,10 @@ export function createSession(api, role, {onSignIn, onSignOut}) {
   // keep retrying every 2 s so the screen recovers by itself.
   (async function restore() {
     try {
+      // The backend answers for THIS screen's role only (api sends it), so the
+      // other screen being signed in, in another tab, does not count here.
       const current = await api.session();
-      if (current.role === role) return show(true);
-      // Same browser is signed in as the OTHER role (cookies are shared
-      // between tabs). Signing in here will replace that session.
-      show(false, `This browser is signed in as "${current.role}". ` +
-                  `Sign in here, or use a private window for the other screen.`);
+      show(current.role === role);
     } catch (error) {
       if (error.status !== 401) {
         status.textContent = 'Cannot restore your session yet. Reconnecting…';

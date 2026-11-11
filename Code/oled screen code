@@ -22,7 +22,9 @@ void setup() {
   }
 
   display.clearDisplay();
-  display.setTextSize(1.5);
+  // Text size is a whole-number scale (1 = 6x8 px per character); 1.5 was truncated to 1.
+  // Size 2 would make "Hello World!" wider than the 128 px screen.
+  display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 24);
   display.println(F("Hello World!"));

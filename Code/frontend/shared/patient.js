@@ -15,7 +15,7 @@ const STATUS_TEXT = {
 };
 const STEP_FOR_STATUS = {PENDING: 0, ACKNOWLEDGED: 1, RESOLVED: 2};   // for the Sent/Seen/Done bar
 
-const api = new EqualCareAPI();
+const api = new EqualCareAPI('patient');
 const connection = createConnectionStatus();
 
 // ---- State: everything the screen needs to draw itself -------------

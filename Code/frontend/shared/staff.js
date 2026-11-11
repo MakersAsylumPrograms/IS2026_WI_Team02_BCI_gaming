@@ -1,4 +1,4 @@
-import {EqualCareAPI, typeInfo} from './api.js';
+import {EqualCareAPI, ApiError, typeInfo} from './api.js';
 import {$, setText, startPolling, createConnectionStatus, createSession} from './common.js';
 
 // ---- Settings (safe to tweak) ---------------------------------------
@@ -8,10 +8,11 @@ const OVERDUE_AFTER_MS = 2 * 60 * 1000;  // PENDING longer than this = extra emp
 const NEW_GLOW_MS = 8000;                // how long a new card glows yellow
 const ALERT_BANNER_MS = 10000;           // how long the "New request" banner stays
 const POLL_MS = 1000;
+const DEFAULT_PATIENT_NAME = 'Bed 1';    // if the backend does not send a name
 
 const BADGE = {PENDING: 'WAITING', ACKNOWLEDGED: 'SEEN', RESOLVED: 'DONE'};
 
-const api = new EqualCareAPI();
+const api = new EqualCareAPI('staff');
 const connection = createConnectionStatus();
 
 // ---- State -----------------------------------------------------------
@@ -24,6 +25,7 @@ const state = {
   busy: new Set(),         // request ids with a Seen/Done call in flight
   deviceConnected: null,   // ESP32 status (null = unknown)
   notice: '',              // error message to show, if any
+  pollError: '',           // last refresh failed for a reason other than the network
 };
 const cards = new Map();   // request id -> its card element (re-used, see cardFor)
 let stopPolling = null;
@@ -58,7 +60,7 @@ function resolvedRequests() {
 async function refresh() {
   try {
     const {requests, patient} = await api.requests();
-    state.patientName = patient.name;
+    state.patientName = patient?.name || DEFAULT_PATIENT_NAME;
     alertForNew(requests);
     // If we just pressed Seen/Done, our copy may be newer than a poll that
     // started a moment earlier. Keep whichever was updated most recently.
@@ -68,10 +70,21 @@ async function refresh() {
       return local && local.updated_at > r.updated_at ? local : r;
     });
     state.loaded = true;
+    state.pollError = '';
     connection.ok();
   } catch (error) {
     if (error.status === 401) return session.expire();
-    connection.failed();
+    if (error instanceof ApiError) {
+      connection.failed();
+    } else {
+      // The server answered but this page could not use the reply (e.g. the
+      // backend is an older version than these files). Say so; it is not a
+      // network problem, so "Reconnecting…" would be misleading.
+      console.error(error);
+      connection.ok();
+      state.pollError = `Cannot show requests: the server's reply was not understood (${error.message}). ` +
+                        'Restart the backend so it matches this page, then reload.';
+    }
   }
   try { state.deviceConnected = (await api.device()).connected; } catch { state.deviceConnected = null; }
   render();   // also runs while offline, so the waiting timers keep ticking
@@ -231,6 +244,7 @@ function placeCards(container, rows, now) {
 }
 
 function render() {
+  setText($('notice'), state.pollError || state.notice);   // shown even before the first load
   if (!state.loaded) return;
   const now = api.serverNow();   // backend clock, so waiting times are correct
   const active = activeRequests();
@@ -247,7 +261,6 @@ function render() {
   setText($('summary'), active.length ? `${waiting} waiting · ${seen} in progress` : 'All clear');
   document.title = waiting ? `(${waiting}) 🔴 EqualCare · Staff` : 'EqualCare · Staff';
 
-  setText($('notice'), state.notice);
   setText($('device'), state.deviceConnected === null ? ''
     : state.deviceConnected ? `${state.patientName} ESP32 controller: connected`
     : `${state.patientName} ESP32 controller: not connected (patient can still use keyboard/mouse)`);

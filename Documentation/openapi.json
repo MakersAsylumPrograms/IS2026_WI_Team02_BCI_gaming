@@ -3,7 +3,7 @@
   "info": {
     "title": "EqualCare LAN API",
     "version": "1.0.0",
-    "description": "One patient, one ESP32, one staff dashboard. Single backend process. API prefix /api/v1. Browser roles use session cookies; writes also require CSRF. No CORS: serve frontend from backend origin or use a development proxy."
+    "description": "One patient, one ESP32, one staff dashboard. Single backend process. API prefix /api/v1. Browser roles use session cookies; one cookie can hold both roles, so browser calls send X-EqualCare-Role (patient or staff; optional when only one role is signed in). Writes also require that role's CSRF token. Logout ends only the named role. No CORS: serve frontend from backend origin or use a development proxy."
   },
   "servers": [
     {
@@ -814,6 +814,12 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-CSRF-Token"
+      },
+      "roleHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-EqualCare-Role",
+        "description": "patient or staff: which signed-in role this call acts as. Required when the session holds both roles."
       },
       "deviceToken": {
         "type": "http",
