@@ -174,6 +174,24 @@ const DEBOUNCE = 800;   // a little more than SELECT_DEBOUNCE_MS in input.js
   await until(async()=> await screen()==='menu', 'device: back to menu');
   assert.equal((await rows()).filter(row=>row.type==='WATER' && row.status==='PENDING').length, 1);
 
+  // 10. Staff screen in the SAME browser as the patient (shared cookie): both keep working.
+  const sharedStaff = await patientContext.newPage();
+  sharedStaff.on('pageerror', error=>errors.push(error.message));
+  await sharedStaff.goto(base+'/staff/');
+  await sharedStaff.locator('#login-id').fill('staff');
+  await sharedStaff.locator('#password').fill('staff-test');
+  await sharedStaff.locator('#password').press('Enter');
+  await sharedStaff.locator('#app').waitFor({state:'visible'});
+  const sharedWater = sharedStaff.locator('#active .request', {hasText: 'Water'}).locator('button.action');
+  await sharedWater.waitFor();
+  await sharedWater.click();             // Seen, from the shared-browser staff tab
+  const waterNote = patient.locator('#options .option', {hasText: 'Water'}).locator('.note');
+  await until(async()=> (await waterNote.count()) && (await waterNote.innerText())==='Help is coming ✓', 'shared-browser ack');
+  assert.equal(await patient.locator('#app').isVisible(), true);     // patient was not signed out
+  assert.equal(await sharedStaff.locator('#app').isVisible(), true);
+  await sharedStaff.close();
+  await patient.bringToFront();
+
   assert.deepEqual(errors,[]);
   // Both dashboards restore their signed cookie after a normal reload.
   for (const page of [patient, staff]) {
@@ -200,7 +218,7 @@ const DEBOUNCE = 800;   // a little more than SELECT_DEBOUNCE_MS in input.js
     await patient.screenshot({path:path.join(process.env.EQUALCARE_SCREENSHOT_DIR,'equalcare-patient.png'),fullPage:true});
     await staff.screenshot({path:path.join(process.env.EQUALCARE_SCREENSHOT_DIR,'equalcare-staff.png'),fullPage:true});
   }
-  console.log('PASS: held key, confirm/cancel, full loop, double SELECT, lost response + refresh, retry, two requests, offline, sole consumer, NEXT+SELECT device flow, no JS errors');
+  console.log('PASS: held key, confirm/cancel, full loop, double SELECT, lost response + refresh, retry, two requests, offline, sole consumer, NEXT+SELECT device flow, shared-browser tabs, no JS errors');
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{
   if(browser) await browser.close();
   server.kill();

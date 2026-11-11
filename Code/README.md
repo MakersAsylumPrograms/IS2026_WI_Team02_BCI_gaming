@@ -11,6 +11,9 @@ From the repository root in PowerShell:
 
 Leave the terminal open; Ctrl+C stops the server. The helper creates a virtual
 environment, installs requirements and starts Flask through Waitress on port 8000.
+After pulling new code, stop the old server before starting again. The launcher
+refuses to start if port 8000 is still in use, because on Windows a second server
+can bind the same port silently while the old code keeps answering.
 For subsequent offline starts after installation:
 
 ```powershell
@@ -32,8 +35,8 @@ py -3 -m venv Code/backend/.venv
 | Server check | http://PATIENT-LAPTOP-IP:8000/api/v1/health |
 
 Health returns JSON with `status: "ok"` and `version: "1"`.
-For both screens on one laptop, use localhost for patient and 127.0.0.1 for staff,
-or separate browser profiles; otherwise sign-in cookies are shared.
+Both screens can run in the same browser on one laptop (for example, two tabs):
+each screen signs in separately and signing in to one does not sign out the other.
 
 ## Passwords, token and local data
 
@@ -150,7 +153,9 @@ PENDING means saved by the backend, not that the nurse has seen it.
 | firmware/config.example.h | Wi-Fi, server and device credential template |
 
 Full request/response schemas: [OpenAPI](../Documentation/openapi.json).
-Browser sign-in uses a session cookie; writes require X-CSRF-Token.
+Browser sign-in uses a session cookie; writes require X-CSRF-Token. One cookie can
+hold both roles, so browser calls send `X-EqualCare-Role: patient|staff` (optional
+when only one role is signed in).
 Staff login sends role, login_id and password; patient login sends role and password.
 The shared API client handles these. Device calls use
 `Authorization: Bearer <device-token>`; the device token never belongs in frontend code.

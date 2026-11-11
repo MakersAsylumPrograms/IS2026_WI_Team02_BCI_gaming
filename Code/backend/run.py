@@ -2,12 +2,24 @@
 import argparse
 import getpass
 import json
+import socket
+import sys
 
 from waitress import serve
 
 from app import create_app
 from credentials import CREDENTIALS, load_credentials, save_credentials
 from werkzeug.security import generate_password_hash
+
+PORT = 8000
+
+
+def port_in_use(port, host='127.0.0.1'):
+    # Waitress sets SO_REUSEADDR, which on Windows lets a second server bind the
+    # same port without any error while the OLD process keeps answering. Check first.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex((host, port)) == 0
 
 
 def main():
@@ -33,9 +45,14 @@ def main():
         print('Existing passwords are preserved as hashes and cannot be displayed.')
     if args.show_credentials:
         return
-    print('EqualCare: http://localhost:8000 | Patient: /patient/ | Nurse: /staff/')
+    if port_in_use(PORT):
+        sys.exit(f'Port {PORT} is already in use, most likely by an EqualCare backend that is still running '
+                 'old code. Stop it first (Ctrl+C in its window), or in PowerShell run:\n'
+                 f'  Stop-Process -Id (Get-NetTCPConnection -LocalPort {PORT} -State Listen).OwningProcess\n'
+                 'then start the backend again.')
+    print(f'EqualCare: http://localhost:{PORT} | Patient: /patient/ | Nurse: /staff/')
     print("Use this laptop's reserved LAN IPv4 address on the nurse laptop and ESP32.")
-    serve(create_app(config), host='0.0.0.0', port=8000, threads=8)
+    serve(create_app(config), host='0.0.0.0', port=PORT, threads=8)
 
 
 if __name__ == '__main__':

@@ -237,6 +237,61 @@ def test_staff_requires_login_id_and_patient_metadata(system):
     assert staff.get('/api/v1/requests').json['patient'] == dict(id='default', name='Bed 1', device_id='esp32-01')
 
 
+def test_patient_and_staff_tabs_share_one_browser(system):
+    # Tabs in one browser share one cookie: signing in to one screen must not sign out the other.
+    app, _, _ = system
+    browser = app.test_client()
+    tokens = {}
+    for role in ('patient', 'staff'):
+        result = browser.post('/api/v1/session', json={'role': role, 'password': role + '-test', 'login_id': 'staff'},
+                              headers={'X-EqualCare-Client': 'dashboard'})
+        tokens[role] = {'X-CSRF-Token': result.json['csrf'], 'X-EqualCare-Role': role}
+    for role in ('patient', 'staff'):
+        restored = browser.get('/api/v1/session', headers={'X-EqualCare-Role': role}).json
+        assert restored['role'] == role and restored['csrf'] == tokens[role]['X-CSRF-Token']
+    rid = submit(browser, tokens['patient']).json['request']['id']
+    # With two roles signed in, a call must say which screen it comes from.
+    assert browser.get('/api/v1/requests').status_code == 401
+    assert browser.get('/api/v1/input-events', headers={'X-Consumer-ID': 'tab', 'X-EqualCare-Role': 'patient'}).status_code == 200
+    # Each role's CSRF token only works for that role.
+    assert browser.post(f'/api/v1/requests/{rid}/acknowledge',
+                        headers={**tokens['patient'], 'X-EqualCare-Role': 'staff'}).status_code == 403
+    assert browser.post(f'/api/v1/requests/{rid}/acknowledge', headers=tokens['staff']).json['request']['status'] == 'ACKNOWLEDGED'
+    assert browser.post(f'/api/v1/requests/{rid}/acknowledge', headers=tokens['patient']).status_code == 401
+    # Signing out of the staff screen leaves the patient screen signed in, and vice versa.
+    assert browser.delete('/api/v1/session', headers=tokens['staff']).status_code == 200
+    assert browser.get('/api/v1/session', headers={'X-EqualCare-Role': 'staff'}).status_code == 401
+    assert browser.get('/api/v1/requests', headers={'X-EqualCare-Role': 'patient'}).status_code == 200
+    assert browser.delete('/api/v1/session', headers=tokens['patient']).status_code == 200
+    assert browser.get('/api/v1/session', headers={'X-EqualCare-Role': 'patient'}).status_code == 401
+
+
+def test_patient_logout_releases_device_lease_in_shared_browser(system):
+    app, _, _ = system
+    browser = app.test_client()
+    headers = {}
+    for role in ('staff', 'patient'):
+        result = browser.post('/api/v1/session', json={'role': role, 'password': role + '-test', 'login_id': 'staff'},
+                              headers={'X-EqualCare-Client': 'dashboard'})
+        headers[role] = {'X-CSRF-Token': result.json['csrf'], 'X-EqualCare-Role': role}
+    assert browser.get('/api/v1/input-events', headers={**headers['patient'], 'X-Consumer-ID': 'tab-1'}).status_code == 200
+    browser.delete('/api/v1/session', headers=headers['staff'])
+    assert app.extensions['input_state']['consumer'] is not None  # Staff logout keeps the patient's lease.
+    browser.delete('/api/v1/session', headers=headers['patient'])
+    assert app.extensions['input_state']['consumer'] is None
+
+
+def test_launcher_detects_a_server_already_on_the_port():
+    import socket
+    from run import port_in_use
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        assert port_in_use(port)
+    assert not port_in_use(port)
+
+
 @pytest.mark.parametrize('source', ['joystick', 'eog'])
 def test_input_sources_share_the_contract(system, source):
     app, _, _ = system

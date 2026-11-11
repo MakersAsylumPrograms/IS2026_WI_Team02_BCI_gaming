@@ -121,14 +121,30 @@ def create_app(config=None):
     app.extensions['input_state'] = state
 
     # --- Auth, errors and headers --------------------------------------------
+    # One browser shares one cookie across tabs, so the session keeps a separate
+    # entry (CSRF token + lease id) per role. That lets the patient and staff
+    # screens run side by side in the same browser without signing each other out.
+    def signed_in():
+        roles = session.get('roles')
+        return roles if isinstance(roles, dict) else {}
+
+    def acting_role(allowed):
+        roles = signed_in()
+        role = request.headers.get('X-EqualCare-Role')
+        if role is None and len(roles) == 1:  # Single-role clients need not name their role.
+            role = next(iter(roles))
+        return role if role in allowed and role in roles else None
+
     def require(*roles):
         def decorator(fn):
             @wraps(fn)
             def wrapped(*args, **kwargs):
-                if session.get('role') not in roles:
+                role = acting_role(roles)
+                if role is None:
                     return error('UNAUTHORIZED', 'Sign in with the appropriate role.', 401)
-                if request.method != 'GET' and not matches(request.headers.get('X-CSRF-Token', ''), session.get('csrf', '!')):
+                if request.method != 'GET' and not matches(request.headers.get('X-CSRF-Token', ''), signed_in()[role]['csrf']):
                     return error('CSRF', 'Missing or invalid session CSRF token.', 403)
+                g.role = role
                 return fn(*args, **kwargs)
             return wrapped
         return decorator
@@ -174,22 +190,28 @@ def create_app(config=None):
                 or (role == 'staff' and data.get('login_id') != app.config['STAFF_LOGIN_ID'])
                 or not check_password_hash(app.config[role.upper() + '_PASSWORD_HASH'], password)):
             return error('UNAUTHORIZED', 'Invalid credentials.', 401)
+        roles = dict(signed_in())  # Keep the other role signed in; fresh tokens for this one.
+        roles[role] = dict(csrf=secrets.token_hex(24), sid=secrets.token_hex(24))
         session.clear()
-        session.update(role=role, csrf=secrets.token_hex(24), sid=secrets.token_hex(24))
-        return jsonify(role=role, csrf=session['csrf'], patient=patient_identity())
+        session['roles'] = roles
+        return jsonify(role=role, csrf=roles[role]['csrf'], patient=patient_identity())
 
     @app.get('/api/v1/session')
     @require('patient', 'staff')
     def get_session():
-        return jsonify(role=session['role'], csrf=session['csrf'], patient=patient_identity())
+        return jsonify(role=g.role, csrf=signed_in()[g.role]['csrf'], patient=patient_identity())
 
     @app.delete('/api/v1/session')
     @require('patient', 'staff')
     def logout():
+        roles = dict(signed_in())
+        ended = roles.pop(g.role)
         with lock:
-            if state['consumer'] and state['consumer'].startswith(session['sid'] + ':'):
+            if state['consumer'] and state['consumer'].startswith(ended['sid'] + ':'):
                 state.update(consumer=None, lease=0)
         session.clear()
+        if roles:
+            session['roles'] = roles
         return jsonify(ok=True)
 
     # --- ESP32 device API ----------------------------------------------------
@@ -241,7 +263,7 @@ def create_app(config=None):
             after = int(after)
         if not identifier(consumer):
             return error('INVALID_CONSUMER', 'Provide X-Consumer-ID for this page instance.', 400)
-        owner = session['sid'] + ':' + consumer
+        owner = signed_in()['patient']['sid'] + ':' + consumer
         with lock:
             now = clock()
             if state['consumer'] != owner and state['lease'] > now:
