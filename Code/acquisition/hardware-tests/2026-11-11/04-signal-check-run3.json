@@ -1,0 +1,35 @@
+{
+  "format": "equalcare-eog-recording/1",
+  "board": "ESP32-S3",
+  "port": "COM7",
+  "sample_rate": 250,
+  "adc_bits": 12,
+  "units": "raw ADC counts (uncalibrated; not microvolts)",
+  "channel": "1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)",
+  "in_plus_electrode": "left",
+  "started_utc": "2026-11-11T11:59:21.633+00:00",
+  "chordspy": "0.2.2",
+  "notes": "raw capture",
+  "protocol": {},
+  "stopped_utc": "2026-11-11T12:00:10.891+00:00",
+  "rows": 11836,
+  "summary": {
+    "health": {
+      "seconds": 47.34,
+      "received": 11836,
+      "missing": 0,
+      "stalls": 0,
+      "loss_percent": 0.0,
+      "device_rate": 249.98,
+      "received_rate": 249.98,
+      "clipped_samples": 882,
+      "clipping_now": true,
+      "flat_now": false,
+      "raw_min": 0,
+      "raw_max": 4095
+    },
+    "firmware_stats": "STATS missed=0 dropped=0",
+    "junk_bytes": 0,
+    "malformed_packets": 0
+  }
+}

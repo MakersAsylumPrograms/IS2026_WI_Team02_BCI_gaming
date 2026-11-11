@@ -20,108 +20,202 @@
 // Our mission is to make neuroscience affordable and accessible for everyone.
 // By supporting us with your purchase, you help spread innovation and open science.
 // Thank you for being part of this journey with us!
+//
+// ---------------------------------------------------------------------------
+// Modified 2026-11 by EqualCare (IS2026 WI Team 02) for single-channel EOG
+// with a BioAmp EXG Pill v3 on GPIO 1. Changes from the upstream Chords
+// ESP32-S3 firmware, which remain under the GNU GPL v3 or later:
+//   * Samples only GPIO 1 (channel 1). Channel slots 2-16 are kept in the
+//     official 36-byte packet so Chords decoders still work, but are always 0
+//     (inactive). Packet layout and byte order are unchanged.
+//   * ADC reads moved out of the timer interrupt. The interrupt only wakes a
+//     high-priority sampler task; complete packets go through a bounded queue
+//     and loop() writes them to Serial.
+//   * Missed sampling intervals are never filled in. The packet counter
+//     advances once per timer tick, so a late or dropped sample shows up on the
+//     host as a counter gap. STATS reports how many were late or dropped.
+//   * Starts stopped (the upstream copy in this repo auto-started and printed
+//     plain text for the Serial Plotter). Only replies to commands are text, and
+//     they are written between whole packets.
+//   * Explicit 12-bit resolution and 11 dB attenuation on GPIO 1 so the ADC
+//     covers the Pill's 0-3.3 V output range (readings above ~3.1 V clip at 4095).
+//   * Wi-Fi and Bluetooth are never started (no radio code is linked).
+//   * Added STATS. WHORU, START, STOP and STATUS behave as upstream.
+//
+// Tested build: Arduino IDE board "ESP32S3 Dev Module", esp32 by Espressif
+// core 3.3.12, USB CDC On Boot: Disabled, Upload Mode: UART0 / Hardware CDC,
+// Flash Size: 16MB, PSRAM: OPI PSRAM (ESP32-S3-DevKitC-1 N16R8).
+// Connect the laptop to the board's "UART" USB port (USB-to-UART bridge).
+// Close the Arduino Serial Monitor/Plotter before Chords or Python opens the port.
+//
+// Serial protocol, 230400 baud 8N1. Commands end with '\n':
+//   WHORU  -> "ESP32-S3"           START -> begin streaming (no reply)
+//   STOP   -> stop streaming        STATUS -> "RUNNING" or "STOPPED"
+//   STATS  -> "STATS missed=<n> dropped=<n>" since the last START
+// Packet (36 bytes, 250 per second while running):
+//   [0]=0xC7 [1]=0x7C [2]=counter (0-255, wraps) [3..34]=16 channels, each a
+//   big-endian uint16 (channel 1 = GPIO 1 raw ADC counts 0-4095) [35]=0x01
+// ---------------------------------------------------------------------------
 
 #include <Arduino.h>
-#include <sdkconfig.h>
 
-// ----- Configuration -----
-#define TIMER_FREQ 1000000UL  // 1 MHz timer tick
-#define NUM_CHANNELS 16
-#define HEADER_LEN 3
-#define PACKET_LEN (NUM_CHANNELS * 2 + HEADER_LEN + 1)
-#define SAMP_RATE 250.0  // 250 samples/sec for 16 channels
-#define SYNC_BYTE_1 0xC7
-#define SYNC_BYTE_2 0x7C
-#define END_BYTE 0x01
-#define BAUD_RATE 230400
+constexpr uint8_t EOG_PIN = 1;          // BioAmp EXG Pill OUT -> GPIO 1 (ADC1 channel 0)
+constexpr uint8_t NUM_CHANNELS = 16;    // Slots in the official ESP32-S3 Chords packet
+constexpr uint8_t HEADER_LEN = 3;
+constexpr uint8_t PACKET_LEN = NUM_CHANNELS * 2 + HEADER_LEN + 1;  // 36 bytes
+constexpr uint32_t SAMPLE_RATE_HZ = 250;
+constexpr uint32_t TIMER_FREQ_HZ = 1000000;  // 1 MHz timer tick
+constexpr uint32_t BAUD_RATE = 230400;
+constexpr uint8_t SYNC_BYTE_1 = 0xC7;
+constexpr uint8_t SYNC_BYTE_2 = 0x7C;
+constexpr uint8_t END_BYTE = 0x01;
+constexpr UBaseType_t QUEUE_DEPTH = 64;  // 256 ms of packets
+constexpr size_t COMMAND_MAX = 16;
 
-const uint8_t adcPins[NUM_CHANNELS] = { 1, 11, 2, 12, 3, 13, 4, 14, 5, 15, 6, 16, 7, 17, 8, 18 };
+struct Packet {
+  uint8_t bytes[PACKET_LEN];
+};
 
-// Global constants and variables
-uint8_t packetBuffer[PACKET_LEN];  // The transmission packet
-uint8_t currentChannel;            // Current channel being sampled
-uint16_t adcValue = 0;             // ADC current value
-bool timerStatus = false;          // Timer status bit
-bool bufferReady = false;          // Buffer ready status bit
+static hw_timer_t *sampleTimer = nullptr;
+static TaskHandle_t samplerTask = nullptr;
+static QueueHandle_t packetQueue = nullptr;
 
-hw_timer_t *timer_1 = NULL;
+static volatile bool running = false;           // Written by loop(), read by the sampler
+static volatile bool restartRequested = false;  // START asks the sampler to reset its counter
+static volatile uint32_t missedIntervals = 0;   // Timer ticks the sampler could not service
+static volatile uint32_t droppedPackets = 0;    // Packets lost because the queue was full
 
-void IRAM_ATTR ADC_ISR() {
-  // ADC value Reading, Converting, and Storing:
-  for (currentChannel = 0; currentChannel < NUM_CHANNELS; currentChannel++) {
-    adcValue = analogRead(adcPins[currentChannel]);
-    // Store current values in packetBuffer to send.
-    packetBuffer[((2 * currentChannel) + HEADER_LEN)] = highByte(adcValue);     // Write High Byte
-    packetBuffer[((2 * currentChannel) + HEADER_LEN + 1)] = lowByte(adcValue);  // Write Low Byte
+// The interrupt does no ADC or Serial work: it only wakes the sampler task.
+void IRAM_ATTR onSampleTimer() {
+  BaseType_t woken = pdFALSE;
+  vTaskNotifyGiveFromISR(samplerTask, &woken);
+  if (woken == pdTRUE) portYIELD_FROM_ISR();
+}
+
+static void samplerLoop(void *) {
+  Packet packet = {};
+  packet.bytes[0] = SYNC_BYTE_1;
+  packet.bytes[1] = SYNC_BYTE_2;
+  packet.bytes[PACKET_LEN - 1] = END_BYTE;  // Channel slots 2-16 stay 0 (inactive)
+  uint8_t counter = 0;
+
+  for (;;) {
+    // Returns how many ticks happened since the last wake (normally 1).
+    const uint32_t ticks = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (restartRequested) {
+      restartRequested = false;
+      counter = 0;
+    }
+    if (!running || ticks == 0) continue;
+
+    // Ticks we could not service were never sampled: skip their counter values
+    // so the host sees a gap instead of a fabricated sample.
+    if (ticks > 1) {
+      missedIntervals = missedIntervals + (ticks - 1);  // Only this task writes while running
+      counter += (uint8_t)(ticks - 1);
+    }
+
+    const uint16_t value = analogRead(EOG_PIN);
+    packet.bytes[2] = counter++;
+    packet.bytes[HEADER_LEN] = highByte(value);      // Channel 1, big-endian
+    packet.bytes[HEADER_LEN + 1] = lowByte(value);
+    if (xQueueSend(packetQueue, &packet, 0) != pdTRUE) droppedPackets = droppedPackets + 1;
   }
-  // Increment the packet counter
-  packetBuffer[2]++;
-  // Set bufferReady status bit to true
-  bufferReady = true;
 }
 
-void timerStart() {
-  timerStatus = true;
-  timerStart(timer_1);
+static void startStreaming() {
+  if (running) return;
+  timerStop(sampleTimer);
+  xQueueReset(packetQueue);
+  ulTaskNotifyValueClear(samplerTask, 0xFFFFFFFF);  // Forget ticks from before START
+  missedIntervals = 0;
+  droppedPackets = 0;
+  restartRequested = true;
+  running = true;
+  timerWrite(sampleTimer, 0);
+  timerStart(sampleTimer);
 }
 
-void timerStop() {
-  timerStatus = false;
-  bufferReady = false;
-  timerStop(timer_1);
+static void stopStreaming() {
+  running = false;
+  timerStop(sampleTimer);
+  xQueueReset(packetQueue);  // Nothing is sent after STOP
+}
+
+static void handleCommand(char *command) {
+  for (char *c = command; *c; ++c) *c = toupper((unsigned char)*c);
+  if (strcmp(command, "WHORU") == 0) {
+    Serial.println("ESP32-S3");
+  } else if (strcmp(command, "START") == 0) {
+    startStreaming();
+  } else if (strcmp(command, "STOP") == 0) {
+    stopStreaming();
+  } else if (strcmp(command, "STATUS") == 0) {
+    Serial.println(running ? "RUNNING" : "STOPPED");
+  } else if (strcmp(command, "STATS") == 0) {
+    Serial.printf("STATS missed=%lu dropped=%lu\n", (unsigned long)missedIntervals,
+                  (unsigned long)droppedPackets);
+  } else {
+    Serial.println("UNKNOWN COMMAND");
+  }
+}
+
+// Reads command bytes without blocking; a command ends at '\n' or '\r'.
+static void pollCommands() {
+  static char line[COMMAND_MAX + 1];
+  static size_t length = 0;
+  static bool overflow = false;
+  while (Serial.available() > 0) {
+    const char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      line[length] = '\0';
+      if (overflow) Serial.println("UNKNOWN COMMAND");
+      else if (length > 0) handleCommand(line);
+      length = 0;
+      overflow = false;
+    } else if (c != ' ' && c != '\t') {
+      if (length < COMMAND_MAX) line[length++] = c;
+      else overflow = true;
+    }
+  }
 }
 
 void setup() {
-
+  Serial.setTxBufferSize(2048);  // 8 packets of headroom; 250 x 36 B/s uses ~40% of 230400 baud
   Serial.begin(BAUD_RATE);
-  Serial.setTimeout(100);
-  while (!Serial) {
-    ;  // Wait for serial port to connect. Needed for native USB
+
+  analogReadResolution(12);
+  analogSetPinAttenuation(EOG_PIN, ADC_11db);
+  analogRead(EOG_PIN);  // Configure the ADC channel before sampling starts
+
+  packetQueue = xQueueCreate(QUEUE_DEPTH, sizeof(Packet));
+  // Core 0 is otherwise idle because the radios are off; loop() runs on core 1.
+  xTaskCreatePinnedToCore(samplerLoop, "eog-sampler", 4096, nullptr, configMAX_PRIORITIES - 2,
+                          &samplerTask, 0);
+  if (packetQueue == nullptr || samplerTask == nullptr) {
+    for (;;) {
+      Serial.println("EOG firmware could not allocate its queue or task");
+      delay(1000);
+    }
   }
 
-  // Initialize packetBuffer
-  packetBuffer[0] = SYNC_BYTE_1;            // Sync 0
-  packetBuffer[1] = SYNC_BYTE_2;            // Sync 1
-  packetBuffer[2] = 0;                      // Packet counter
-  packetBuffer[PACKET_LEN - 1] = END_BYTE;  // End Byte
-
-  timer_1 = timerBegin(1000000);
-  timerAttachInterrupt(timer_1, &ADC_ISR);
-  timerAlarm(timer_1, (int)(TIMER_FREQ / SAMP_RATE), true, 0);
-  timerStart();  // Changed from timerStop(timer_1) so plotting starts automatically
-  analogReadResolution(12);
+  sampleTimer = timerBegin(TIMER_FREQ_HZ);
+  timerAttachInterrupt(sampleTimer, &onSampleTimer);
+  timerAlarm(sampleTimer, TIMER_FREQ_HZ / SAMPLE_RATE_HZ, true, 0);
+  timerStop(sampleTimer);  // Start stopped; START begins streaming
 }
 
 void loop() {
-  // Send data if the buffer is ready and the timer is activ
-  if (timerStatus and bufferReady) {
-
-
-    // Print Channel 1 (GPIO 1) value as plain text for Serial Plotter
-    Serial.println((packetBuffer[3] << 8) | packetBuffer[4]);
-    // Reset the bufferReady flag
-    bufferReady = false;
-  }
-
-  if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();         // Remove extra spaces or newline characters
-    command.toUpperCase();  // Normalize to uppercase for case-insensitivity
-
-    if (command == "WHORU")  // Who are you?
-    {
-      Serial.println("ESP32-S3");
-    } else if (command == "START")  // Start data acquisition
-    {
-      timerStart();
-    } else if (command == "STOP")  // Stop data acquisition
-    {
-      timerStop();
-    } else if (command == "STATUS")  // Get status
-    {
-      Serial.println(timerStatus ? "RUNNING" : "STOPPED");
-    } else {
-      Serial.println("UNKNOWN COMMAND");
+  Packet packet;
+  if (running) {
+    // Wait up to 2 ms for a packet so commands are still checked promptly.
+    if (xQueueReceive(packetQueue, &packet, pdMS_TO_TICKS(2)) == pdTRUE) {
+      do {
+        if (running) Serial.write(packet.bytes, PACKET_LEN);  // Whole packets only
+      } while (running && xQueueReceive(packetQueue, &packet, 0) == pdTRUE);
     }
+  } else {
+    vTaskDelay(pdMS_TO_TICKS(2));
   }
+  pollCommands();
 }

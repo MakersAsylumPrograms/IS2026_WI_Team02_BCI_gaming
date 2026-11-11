@@ -67,3 +67,7 @@ _autosave-*
 .env
 Code/backend/instance/
 Code/firmware/config.h
+# EOG recordings, models and event logs (personal biosignal data)
+Code/acquisition/data/
+# ...except results the team chose to share (the *.csv rule above would hide the recordings)
+!Code/acquisition/hardware-tests/**/*.csv

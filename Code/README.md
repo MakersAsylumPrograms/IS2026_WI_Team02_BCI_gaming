@@ -209,18 +209,22 @@ Tests use temporary databases and test credentials. Coverage includes lifecycle,
 retries, persistence, permissions, concurrent sends, expired/duplicate commands,
 confirmation/cancel, offline recovery and device-only navigation.
 
-BioAmp integration: electrodes -> BioAmp EXG Pill analog output -> ESP32
-sampling/filtering/calibration/gesture detection -> `transport.emit(...)` -> backend.
-After a confirmed eye gesture, emit one NEXT/PREVIOUS/SELECT with CareSource::Eog.
-Do not send every analog sample or repeatedly emit a held gesture. Joystick fallback
-uses the identical command contract. The backend does not process raw signals.
+EOG path (current milestone): BioAmp EXG Pill v3 -> GPIO 1 -> ESP32-S3 running
+`firmware/ESP32-S3` (Chords protocol, 250 Hz) -> USB-to-UART -> `acquisition/`
+(official chordspy + filtering, per-user calibration and LEFT / RIGHT / BLINK
+classification on the laptop). See [acquisition/README.md](acquisition/README.md) for
+flashing, the hardware session and validation targets. It does not yet send
+dashboard commands. Later, one confirmed gesture maps to one NEXT/PREVIOUS/SELECT with
+source `eog`; never send every analog sample or repeat a held gesture. The joystick
+uses the same command contract. The backend does not process raw signals.
 
 Before physical integration, the hardware owner must provide the exact board
 model, GPIO/power wiring table, BioAmp output voltage range and joystick switch
 wiring. Verify ADC compatibility with Wi-Fi, thresholds, debounce, EOG
 calibration and fallback. Compile and check memory on the actual selected board.
-The hardware diagram requires isolated battery operation with no USB/charger
-attached during electrode use; Serial simulation is for bench testing without electrodes.
+During electrode use the laptop runs on battery with its charger and any
+mains-powered peripherals disconnected (the USB-to-UART link goes only to that
+battery-powered laptop); Serial simulation is for bench testing without electrodes.
 Two physical laptops, actual ESP32 operation and the two-second feedback target
 on the team's LAN still need verification.
 
