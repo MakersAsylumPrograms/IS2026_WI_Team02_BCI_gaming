@@ -67,10 +67,11 @@ _autosave-*
 .env
 Code/backend/instance/
 Code/firmware/config.h
-# EOG recordings, models and event logs (personal biosignal data)
-Code/acquisition/data/
+# EOG recordings, models, event logs and diagnostics are shared with the team (decided 2026-11-12;
+# the repository is public). Backend credentials above stay private.
 Code/runtime/
 Code/launcher.local.json
 Code/launcher-config.json
 # ...except results the team chose to share (the *.csv rule above would hide the recordings)
 !Code/acquisition/hardware-tests/**/*.csv
+!Code/acquisition/data/**/*.csv

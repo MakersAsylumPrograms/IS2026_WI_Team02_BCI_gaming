@@ -1,0 +1,51 @@
+{
+  "format": "equalcare-eog-recording/1",
+  "board": "ESP32-S3",
+  "port": "COM7",
+  "sample_rate": 250,
+  "adc_bits": 12,
+  "units": "raw ADC counts (uncalibrated; not microvolts)",
+  "channel": "1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)",
+  "in_plus_electrode": "left",
+  "started_utc": "2026-11-12T06:12:12.422+00:00",
+  "chordspy": "0.2.2",
+  "notes": "calibration set, relabelled: the participant performed each step during the step before it (acting on the \"next:\" line), so every trial label was moved one step earlier. Raw samples are unchanged. Source: calibration-20261112-114212.",
+  "protocol": {
+    "neutral_seconds": 30,
+    "trials_per_gesture": 20,
+    "gestures": [
+      "LEFT",
+      "RIGHT",
+      "BLINK",
+      "DOUBLE_BLINK"
+    ],
+    "hold_seconds": 2.0,
+    "center_seconds": 2.0,
+    "blink_seconds": 2.0,
+    "rest_seconds": 1.5,
+    "natural_seconds": 120,
+    "set": "calibration"
+  },
+  "stopped_utc": "2026-11-12T06:20:50.157+00:00",
+  "rows": 128972,
+  "summary": {
+    "health": {
+      "seconds": 515.88,
+      "received": 128972,
+      "missing": 0,
+      "stalls": 0,
+      "loss_percent": 0.0,
+      "device_rate": 250.0,
+      "received_rate": 250.0,
+      "clipped_samples": 918,
+      "clipping_now": false,
+      "flat_now": false,
+      "raw_min": 1747,
+      "raw_max": 2315
+    },
+    "firmware_stats": "STATS missed=0 dropped=0",
+    "junk_bytes": 0,
+    "malformed_packets": 0
+  },
+  "relabelled_from": "calibration-20261112-114212"
+}
