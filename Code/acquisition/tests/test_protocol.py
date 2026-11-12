@@ -37,7 +37,7 @@ class FakePort:
 
 
 def test_profile_extends_official_chords_usb():
-    from chordspy.chords_serial import Chords_USB
+    from eog_acquisition.chords_compat import Chords_USB
     assert 'ESP32-S3' not in Chords_USB.supported_boards  # the reason this package adds it
     profile = ChordsUSBESP32S3.supported_boards['ESP32-S3']
     assert profile == {'sampling_rate': 250, 'Num_channels': 16, 'resolution': 12}

@@ -10,7 +10,7 @@ import threading
 import time
 
 import serial
-from chordspy.chords_serial import Chords_USB
+from .chords_compat import Chords_USB
 
 from .protocol import BAUD_RATE, BOARD_ID, NUM_SLOTS, RESOLUTION_BITS, SAMPLE_RATE, Sequencer, StreamDecoder
 

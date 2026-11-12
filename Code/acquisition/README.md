@@ -17,6 +17,18 @@ integration come later through the callbacks described at the end.
 
 ## 2. Wiring and electrodes
 
+Joystick assignment for the next integration milestone (PS2 analog breakout):
+GND → GND, VCC → **3V3**, VRx → GPIO 4, VRy → GPIO 5,
+SW → GPIO 6 (configure INPUT_PULLUP; pressed is LOW).
+Use 3.3 V power so the analog outputs remain compatible with ESP32 inputs.
+GPIO 1 remains dedicated to the Pill. This is the proposed wiring; joystick
+sampling and dashboard forwarding are not implemented in this acquisition build.
+
+Serial acquisition loads the unchanged official `chords_serial.py` from the pinned
+installed distribution directly. This avoids the upstream package initializer,
+which otherwise starts importing GUI/LSL dependencies and requires native liblsl
+even for serial-only use. No native LSL installation is needed for this path.
+
 | Pill v3 | ESP32-S3-DevKitC-1 (N16R8) |
 | --- | --- |
 | VCC | 3V3 |
@@ -81,7 +93,8 @@ short mid = back to CENTRE, very high = BLINK. Hold each side look until the CEN
 
 **Enabling gestures:** a calibrated model starts with every gesture **disabled**.
 `evaluate --apply` enables only the gestures that meet every target on the separate
-recording (≥ 20 trials, precision and recall ≥ 0.90, ≤ 1 false event per minute). BLINK in
+recording (≥ 20 trials, precision and recall ≥ 0.90, ≤ 1 false event per minute,
+including the combined natural-use false-event rate, with at least 119 seconds of natural-use data). BLINK in
 particular may stay disabled: one horizontal channel does not always separate deliberate
 blinks from ordinary ones. `run --candidates` shows unvalidated output, clearly marked, for
 debugging only.
