@@ -1,0 +1,24 @@
+{
+  "run": "signal check 1 (original), raw samples overwritten by run 2; this is the analysis made before that",
+  "started_local": "2026-11-11 ~17:20 IST",
+  "in_plus_electrode": "left",
+  "duration_s": 48.41,
+  "rate_hz": 250.05,
+  "missing": 0,
+  "stalls": 0,
+  "firmware_stats": "STATS missed=0 dropped=0",
+  "baseline_counts": 1882,
+  "quiet_noise_std_counts": 31.5,
+  "raw_min": 0,
+  "raw_max": 4059,
+  "clipped_samples": 1,
+  "median_spike_decay_s": 0.108,
+  "spikes_time_s_counts_decay_s": [
+    [1.93, -1213, 0.116], [2.86, 1617, 0.100], [11.32, 1251, 0.188], [14.03, -1636, 0.112],
+    [16.66, 1293, 0.140], [17.51, -1882, 0.104], [19.72, -870, 0.060], [22.00, 1400, 0.140],
+    [23.86, -1793, 0.108], [26.20, -1331, 0.164], [27.57, 2177, 0.080], [29.69, -1472, 0.112],
+    [31.40, 1325, 0.100], [33.42, -1381, 0.172], [35.25, 1909, 0.108], [45.05, 691, 0.064],
+    [46.63, 1289, 0.072]
+  ],
+  "notes": "Left = positive spike, right = negative spike, returns opposite. Blinks positive and narrower (decay ~0.07 s). Plot: signal-check-run1-1721-plot.png (raw, 1 Hz low-pass, 0.5-20 Hz filtered)."
+}

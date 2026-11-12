@@ -1,0 +1,32 @@
+{
+  "port": "COM7",
+  "checks": {
+    "Identified as ESP32-S3 (WHORU)": true,
+    "Starts stopped (STATUS = STOPPED)": true,
+    "Streams after START": true,
+    "Sample rate within 1% of 250 Hz": true,
+    "No counter gaps or stalls": true,
+    "No text or stray bytes while streaming": true,
+    "Channels 2-16 inactive (zero)": true,
+    "Silent after STOP": true,
+    "STATUS after STOP = STOPPED": true
+  },
+  "health": {
+    "seconds": 10.05,
+    "received": 2512,
+    "missing": 0,
+    "stalls": 0,
+    "loss_percent": 0.0,
+    "device_rate": 249.93,
+    "received_rate": 249.93,
+    "clipped_samples": 1073,
+    "clipping_now": true,
+    "flat_now": false,
+    "raw_min": 0,
+    "raw_max": 4050
+  },
+  "stats": "STATS missed=0 dropped=0",
+  "text_while_streaming": [],
+  "junk_bytes_while_streaming": 0,
+  "leftover_bytes_after_stop": 0
+}
