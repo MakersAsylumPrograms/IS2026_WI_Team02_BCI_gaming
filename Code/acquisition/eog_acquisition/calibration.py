@@ -170,6 +170,7 @@ def evaluate(recording, model, targets=TARGETS):
     indexes = sorted(tags)
     minutes = (indexes[-1] - indexes[0] + 1) / fs / 60 if indexes else 0.0
     natural_minutes = sum(1 for label, _ in tags.values() if label == 'NATURAL') / fs / 60
+    natural_rate = natural_false / natural_minutes if natural_minutes else None
     gestures = {}
     for g in GESTURES:
         trials = sum(1 for cue in cues.values() if cue[0] == g)
@@ -180,7 +181,8 @@ def evaluate(recording, model, targets=TARGETS):
         false_rate = false / minutes if minutes else None
         passed = (g in model['templates'] and trials >= targets['min_trials'] and precision is not None
                   and precision >= targets['precision'] and recall >= targets['recall']
-                  and false_rate <= targets['false_per_minute'])
+                  and false_rate <= targets['false_per_minute']
+                  and natural_minutes >= 119 / 60 and natural_rate <= targets['false_per_minute'])
         gestures[g] = dict(trials=trials, emitted=emitted, correct=hits[g], false_events=false,
                            precision=None if precision is None else round(precision, 3),
                            recall=None if recall is None else round(recall, 3),
@@ -191,7 +193,7 @@ def evaluate(recording, model, targets=TARGETS):
                 targets=targets, gestures=gestures,
                 false_per_minute=round(total_false / minutes, 3) if minutes else None,
                 natural_minutes=round(natural_minutes, 2),
-                natural_false_per_minute=round(natural_false / natural_minutes, 3) if natural_minutes else None,
+                natural_false_per_minute=round(natural_rate, 3) if natural_rate is not None else None,
                 enable=[g for g in GESTURES if gestures[g]['passed']])
 
 

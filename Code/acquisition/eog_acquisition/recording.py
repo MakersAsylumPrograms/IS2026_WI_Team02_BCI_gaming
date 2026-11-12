@@ -43,7 +43,9 @@ class Recorder:
                          channel='1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)',
                          in_plus_electrode=in_plus, started_utc=utc_now(), chordspy=chordspy_version(),
                          notes=notes, protocol=protocol or {})
-        self._file = open(self.path, 'w', newline='', encoding='utf-8')
+        if self.meta_path.exists():
+            raise FileExistsError(f'Recording metadata already exists: {self.meta_path}')
+        self._file = open(self.path, 'x', newline='', encoding='utf-8')
         self._csv = csv.writer(self._file)
         self._csv.writerow(COLUMNS)
         self.rows = 0
