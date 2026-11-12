@@ -23,10 +23,11 @@
 //
 // ---------------------------------------------------------------------------
 // Modified 2026-11 by EqualCare (IS2026 WI Team 02) for single-channel EOG
-// with a BioAmp EXG Pill v3 on GPIO 1. Changes from the upstream Chords
-// ESP32-S3 firmware, which remain under the GNU GPL v3 or later:
-//   * Samples only GPIO 1 (channel 1). Channel slots 2-16 are kept in the
-//     official 36-byte packet so Chords decoders still work, but are always 0
+// with a BioAmp EXG Pill v3 on GPIO 5, plus an analog joystick. Changes from the
+// upstream Chords ESP32-S3 firmware, which remain under the GNU GPL v3 or later:
+//   * Channel 1 = GPIO 5 (EOG). Channels 2-4 = joystick X (GPIO 1), Y (GPIO 2) and
+//     button (GPIO 6, sent as 1 = pressed, 0 = released). Slots 5-16 are kept in
+//     the official 36-byte packet so Chords decoders still work, but are always 0
 //     (inactive). Packet layout and byte order are unchanged.
 //   * ADC reads moved out of the timer interrupt. The interrupt only wakes a
 //     high-priority sampler task; complete packets go through a bounded queue
@@ -37,8 +38,9 @@
 //   * Starts stopped (the upstream copy in this repo auto-started and printed
 //     plain text for the Serial Plotter). Only replies to commands are text, and
 //     they are written between whole packets.
-//   * Explicit 12-bit resolution and 11 dB attenuation on GPIO 1 so the ADC
-//     covers the Pill's 0-3.3 V output range (readings above ~3.1 V clip at 4095).
+//   * Explicit 12-bit resolution and 11 dB attenuation on the analog pins so the
+//     ADC covers 0-3.3 V (readings above ~3.1 V clip at 4095). EOG is read first
+//     in every tick, so the joystick never delays the EOG sample.
 //   * Wi-Fi and Bluetooth are never started (no radio code is linked).
 //   * Added STATS. WHORU, START, STOP and STATUS behave as upstream.
 //
@@ -54,12 +56,16 @@
 //   STATS  -> "STATS missed=<n> dropped=<n>" since the last START
 // Packet (36 bytes, 250 per second while running):
 //   [0]=0xC7 [1]=0x7C [2]=counter (0-255, wraps) [3..34]=16 channels, each a
-//   big-endian uint16 (channel 1 = GPIO 1 raw ADC counts 0-4095) [35]=0x01
+//   big-endian uint16 (channel 1 = GPIO 5 EOG raw ADC counts 0-4095; channels 2-4 =
+//   joystick X, Y counts 0-4095 and button 0/1; channels 5-16 = 0) [35]=0x01
 // ---------------------------------------------------------------------------
 
 #include <Arduino.h>
 
-constexpr uint8_t EOG_PIN = 1;          // BioAmp EXG Pill OUT -> GPIO 1 (ADC1 channel 0)
+constexpr uint8_t EOG_PIN = 5;          // BioAmp EXG Pill OUT -> GPIO 5 (ADC1 channel 4)
+constexpr uint8_t JOY_X_PIN = 1;        // Joystick VRx -> GPIO 1 (ADC1 channel 0)
+constexpr uint8_t JOY_Y_PIN = 2;        // Joystick VRy -> GPIO 2 (ADC1 channel 1)
+constexpr uint8_t JOY_SW_PIN = 6;       // Joystick SW  -> GPIO 6 (pressed = LOW, internal pull-up)
 constexpr uint8_t NUM_CHANNELS = 16;    // Slots in the official ESP32-S3 Chords packet
 constexpr uint8_t HEADER_LEN = 3;
 constexpr uint8_t PACKET_LEN = NUM_CHANNELS * 2 + HEADER_LEN + 1;  // 36 bytes
@@ -96,7 +102,7 @@ static void samplerLoop(void *) {
   Packet packet = {};
   packet.bytes[0] = SYNC_BYTE_1;
   packet.bytes[1] = SYNC_BYTE_2;
-  packet.bytes[PACKET_LEN - 1] = END_BYTE;  // Channel slots 2-16 stay 0 (inactive)
+  packet.bytes[PACKET_LEN - 1] = END_BYTE;  // Channel slots 5-16 stay 0 (inactive)
   uint8_t counter = 0;
 
   for (;;) {
@@ -115,10 +121,16 @@ static void samplerLoop(void *) {
       counter += (uint8_t)(ticks - 1);
     }
 
-    const uint16_t value = analogRead(EOG_PIN);
+    const uint16_t value = analogRead(EOG_PIN);     // EOG first: its timing matters most
+    const uint16_t joystick[3] = {(uint16_t)analogRead(JOY_X_PIN), (uint16_t)analogRead(JOY_Y_PIN),
+                                  (uint16_t)(digitalRead(JOY_SW_PIN) == LOW ? 1 : 0)};
     packet.bytes[2] = counter++;
     packet.bytes[HEADER_LEN] = highByte(value);      // Channel 1, big-endian
     packet.bytes[HEADER_LEN + 1] = lowByte(value);
+    for (uint8_t i = 0; i < 3; i++) {                // Channels 2-4
+      packet.bytes[HEADER_LEN + 2 + 2 * i] = highByte(joystick[i]);
+      packet.bytes[HEADER_LEN + 3 + 2 * i] = lowByte(joystick[i]);
+    }
     if (xQueueSend(packetQueue, &packet, 0) != pdTRUE) droppedPackets = droppedPackets + 1;
   }
 }
@@ -185,8 +197,11 @@ void setup() {
   Serial.begin(BAUD_RATE);
 
   analogReadResolution(12);
-  analogSetPinAttenuation(EOG_PIN, ADC_11db);
-  analogRead(EOG_PIN);  // Configure the ADC channel before sampling starts
+  for (uint8_t pin : {EOG_PIN, JOY_X_PIN, JOY_Y_PIN}) {
+    analogSetPinAttenuation(pin, ADC_11db);
+    analogRead(pin);  // Configure each ADC channel before sampling starts
+  }
+  pinMode(JOY_SW_PIN, INPUT_PULLUP);
 
   packetQueue = xQueueCreate(QUEUE_DEPTH, sizeof(Packet));
   // Core 0 is otherwise idle because the radios are off; loop() runs on core 1.

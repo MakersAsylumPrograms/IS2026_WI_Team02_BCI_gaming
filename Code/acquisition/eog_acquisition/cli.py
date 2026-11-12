@@ -10,8 +10,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .calibration import TARGETS, CalibrationError, apply_evaluation, calibrate, evaluate, held_out
-from .classifier import GESTURES, GestureClassifier
+from .cycle import (DEFAULT_MODEL, MIN_RECALL, CalibrationError, CycleDetector, calibrate, detect, load_model,
+                    save_model, score)
+from .dashboard import COMMANDS, DEFAULT_SERVER, DashboardLink
+from .joystick import JoystickReader
 from .device import DEFAULT_PORT, DeviceError, EOGDevice
 from .processing import Pipeline
 from .protocol import SAMPLE_RATE
@@ -139,7 +141,7 @@ def cmd_check(args):
         'Sample rate within 1% of 250 Hz': abs(rate - SAMPLE_RATE) / SAMPLE_RATE <= RATE_TOLERANCE,
         'No counter gaps or stalls': health['missing'] == 0 and health['stalls'] == 0,
         'No text or stray bytes while streaming': junk_while_streaming == 0 and not text_while_streaming,
-        'Channels 2-16 inactive (zero)': device.decoder.inactive_nonzero == 0,
+        'Channels 5-16 inactive (zero)': device.decoder.inactive_nonzero == 0,
         'Silent after STOP': not leftover,
         'STATUS after STOP = STOPPED': after == 'STOPPED',
     }
@@ -152,9 +154,9 @@ def cmd_check(args):
     return 0 if all(checks.values()) else 1
 
 
-def _stream(args, recorder, classifier=None, minutes=None, plot=False, session=None):
+def _stream(args, recorder, minutes=None, plot=False, session=None):
     """Stream until Ctrl+C / disconnect / `minutes` / the guided session ends."""
-    pipeline = Pipeline(classifier=classifier, recorder=recorder)
+    pipeline = Pipeline(recorder=recorder)
     live = Live(args.port, pipeline)
     worker = None
     try:
@@ -223,84 +225,114 @@ def cmd_session(args):
     _stream(args, recorder, plot=args.plot, session=session)
     print(f'Saved {recorder.path}' + ('' if finished.get('ok') else '  (INCOMPLETE: stopped early)'))
     if args.set == 'calibration' and finished.get('ok') and args.auto_calibrate:
-        return cmd_calibrate(argparse.Namespace(recording=str(recorder.path), out=None))
+        return cmd_calibrate(argparse.Namespace(recordings=[str(recorder.path)], out=None, min_recall=MIN_RECALL))
     if args.set == 'calibration':
         print(f'Next: python -m eog_acquisition calibrate "{recorder.path}"')
     else:
-        print(f'Next: python -m eog_acquisition evaluate "{recorder.path}" --model <model.json> --apply')
+        print(f'Next: python -m eog_acquisition evaluate "{recorder.path}" --model <model.json>')
     return 0 if finished.get('ok') else 1
 
 
-def print_scores(gestures):
-    for g, s in gestures.items():
-        print(f"  {g:6} trials {s['trials']:3}  precision {s['precision']}  recall {s['recall']}  "
-              f"false {s['false_events']} ({s['false_per_minute']}/min)  {'PASS' if s['passed'] else 'fail'}")
+def print_score(name, s):
+    if s['trials']:
+        print(f"  {name}: {s['hits']}/{s['trials']} deliberate looks gave a CYCLE (recall {s['recall']}); "
+              f"precision {s['precision']} overall, {s['protocol_precision']} during the protocol")
+        print(f"    false CYCLEs: {s['false_during_protocol']} during the protocol ({s['false_per_minute']}/min, "
+              f"{s['false_after_blink_cues']} after blink cues); {s['natural_events']} during free use "
+              f"({s['natural_per_minute']}/min)")
+    if s['missed']:
+        print(f"    missed trials: {s['missed']}")
 
 
 def cmd_calibrate(args):
-    recording = load_recording(args.recording)
+    """Fit the CYCLE detector (gaze recovery, threshold, hold) to guided-session recordings."""
+    recordings = [load_recording(path) for path in args.recordings]
     try:
-        model, report = calibrate(recording, source=str(Path(args.recording).with_suffix('.csv')))
+        model, report = calibrate(recordings, min_recall=args.min_recall,
+                                  sources=[str(Path(p).with_suffix('.csv')) for p in args.recordings])
     except CalibrationError as exc:
         print(f'Calibration failed: {exc}')
         return 1
-    out = Path(args.out or DATA / 'models' / f'model-{stamp()}.json')
-    save_json(out, model)
-    save_json(out.with_suffix('.calibration.json'), report)
-    print(f"Noise {report['noise']} counts, onset {report['onset']} counts, LEFT polarity {report['left_sign']:+d}")
-    print(f"Trials {report['trials']}; examples used {report['detected']}")
+    out = save_model(model, args.out or DATA / 'models' / f'cycle-{stamp()}.json', report)
+    print(f"Pill time constant {report['tau']} s (plateau flatness {report['plateau_flatness']}), typical held "
+          f"look {report['typical_shift']} counts from {report['clean_looks']} clean looks")
+    print(f"CYCLE = gaze shift over {model.threshold} counts held for {model.hold} s "
+          f"(most precise setting with recall >= {args.min_recall})")
     for warning in report['warnings']:
         print(f'Warning: {warning}')
-    print('In-sample fit (optimistic, NOT a validation):')
-    print_scores(report['in_sample'])
-    print(f'Model saved to {out}. Every gesture stays disabled until held-out evaluation:')
-    print(f'  python -m eog_acquisition evaluate <evaluation recording> --model "{out}" --apply')
+    print('In-sample (optimistic, the same data it was fitted on):')
+    for path, s in zip(args.recordings, report['per_recording']):
+        print_score(Path(path).stem, s)
+    print(f'Model saved to {out}')
+    print(f'Check it on another recording:  python -m eog_acquisition evaluate <recording> --model "{out}"')
     return 0
 
 
 def cmd_evaluate(args):
-    model = json.loads(Path(args.model).read_text(encoding='utf-8'))
-    recording = load_recording(args.recording)
-    if not held_out(model, recording) and not args.allow_same:
-        print('This is the recording the model was calibrated on; record a separate evaluation set.')
-        return 1
-    report = evaluate(recording, model)
-    print(f"Held-out evaluation: {report['minutes']} min. Targets: precision and recall >= {TARGETS['precision']}, "
-          f"<= {TARGETS['false_per_minute']} false/min, >= {TARGETS['min_trials']} trials")
-    print_scores(report['gestures'])
-    print(f"All false events: {report['false_per_minute']}/min; during natural use: "
-          f"{report['natural_false_per_minute']}/min")
-    print(f"Gestures meeting every target: {', '.join(report['enable']) or 'none'}")
-    save_json(Path(args.model).with_suffix(f'.evaluation-{stamp()}.json'), report)
-    if args.apply:
-        save_json(args.model, apply_evaluation(model, report))
-        print(f"Model updated: enabled = {report['enable'] or 'none'}; every other gesture stays disabled.")
+    """Score a labelled recording (or count CYCLEs in an unlabelled one) with a CYCLE model."""
+    model = load_model(args.model)
+    for path in args.recordings:
+        recording = load_recording(path)
+        events = detect(recording, model)
+        s = score(recording, events)
+        if s['trials']:
+            print_score(Path(path).stem, s)
+        else:
+            times = ', '.join(f'{(e.index - recording.index[0]) / recording.sample_rate:.1f}s' for e in events)
+            print(f"  {Path(path).stem}: {len(events)} CYCLE(s) in {len(recording.raw) / recording.sample_rate:.0f} s"
+                  f"{': ' + times if times else ''}")
     return 0
 
 
-def print_event(event, prefix=''):
-    flag = '' if event.validated else '  [unvalidated candidate]'
-    print(f'{prefix}  {event.gesture:5}  sample {event.start_index}  peak {event.peak}  '
-          f'distance {event.distance}{flag}', flush=True)
+def connect_dashboard(args):
+    """DashboardLink after a successful heartbeat, or None (message printed)."""
+    link = DashboardLink(args.server, command=getattr(args, 'command', 'PREVIOUS'))  # eye command; joystick sends its own
+    try:
+        link.check()
+    except OSError as exc:
+        print(f'Dashboard backend at {args.server} is not reachable ({exc}). Start it with '
+              f'Code/backend/start.ps1, sign in on the patient screen, then run this again.')
+        return None
+    print(f'Dashboard backend at {args.server}: connected as device {link.device_id}.')
+    return link.start()
 
 
 def cmd_run(args):
-    """Live classification to the terminal and an event log. Sends nothing anywhere else."""
-    model = json.loads(Path(args.model).read_text(encoding='utf-8'))
-    enabled = [g for g in GESTURES if model.get('enabled', {}).get(g)]
-    if not enabled and not args.candidates:
-        print('No gesture has passed held-out evaluation in this model. Run evaluate --apply, '
-              'or add --candidates to watch unvalidated output.')
-        return 1
-    print(f"Enabled: {', '.join(enabled) or 'none'}" + ('; also showing unvalidated candidates' if args.candidates else ''))
+    """Live eyes (CYCLE) + joystick; with --dashboard both drive the patient screen."""
+    model = load_model(args.model)
+    print(f'Eyes: CYCLE = look to EITHER side over {model.threshold} counts and hold {model.hold} s '
+          f'(the look back to centre does not count) -> {args.command}.')
+    if not args.no_joystick:
+        print('Joystick: left/up -> PREVIOUS, right/down -> NEXT, press -> SELECT'
+              + (' (inverted)' if args.invert_joystick else '') + '. Leave it still for the first second.')
+    link = None
+    if args.dashboard:
+        link = connect_dashboard(args)
+        if link is None:
+            return 1
     log = EventLog(args.events or DATA / 'events' / f'events-{stamp()}.csv')
     recorder = Recorder(args.record, port=args.port, in_plus=args.in_plus, notes='live run') if args.record else None
-    classifier = GestureClassifier(model, emit_candidates=args.candidates)
-    pipeline = Pipeline(classifier=classifier, recorder=recorder)
-    pipeline.on_gesture(lambda event: print_event(event, log.write(event)))
+    joystick = None if args.no_joystick else JoystickReader(invert=args.invert_joystick)
+    pipeline = Pipeline(detector=CycleDetector(model), recorder=recorder, joystick=joystick)
+    count = [0]
+
+    def on_event(event):
+        log.write(event)
+        if link:
+            link.send(event)
+        if event.source == 'eog':
+            count[0] += 1
+            print(f'  EYES      CYCLE #{count[0]}  (shift {event.shift:+.0f} counts)'
+                  + (f'  -> {args.command}' if link else ''), flush=True)
+        else:
+            print(f'  JOYSTICK  {event.direction:5}  -> {event.command}' + ('' if link else '  (not sent)'),
+                  flush=True)
+
+    pipeline.on_event(on_event)
     live = Live(args.port, pipeline)
     try:
         live.start()
+        print('Running. Eyes: 3 s warm-up, then look to either side and hold. Ctrl+C (or close the plot) stops.')
         if args.plot:
             from .viewer import LiveView
             LiveView(pipeline, SAMPLE_RATE, lambda: status_line(pipeline.health.snapshot(), live.device.decoder)
@@ -310,28 +342,74 @@ def cmd_run(args):
     finally:
         stats = live.finish()
         log.close()
+        if link:
+            link.stop()
         if recorder:
             recorder.close(dict(health=pipeline.health.snapshot(), firmware_stats=stats))
     summarise(pipeline.health.snapshot(), stats, live.device.decoder)
-    print(f'Events logged to {log.path}')
+    print(f'{count[0]} eye CYCLE(s); events logged to {log.path}'
+          + (f'; dashboard: {link.sent} sent, {link.dropped} dropped' if link else ''))
+    return 0
+
+
+def cmd_joystick(args):
+    """Live joystick test: raw X/Y/button and each push or press; --dashboard also sends them."""
+    reader = JoystickReader(invert=args.invert_joystick)
+    pipeline = Pipeline(joystick=reader)
+    link = connect_dashboard(args) if args.dashboard else None
+    if args.dashboard and link is None:
+        return 1
+    state = {'next': 0.0, 'ready': False}
+
+    def on_sample(processed):
+        x, y, button = processed.sample.joystick or (0, 0, 0)
+        if reader.ready and not state['ready']:
+            state['ready'] = True
+            if reader.mode == 'centre':
+                print(f'  centre measured: x={reader.centre[0]:.0f} y={reader.centre[1]:.0f}. Push the stick.', flush=True)
+            else:
+                print('  no steady centre (this joystick rests low and noisy): high-push mode. '
+                      'A push that drives X high -> NEXT, Y high -> PREVIOUS.', flush=True)
+        if processed.sample.host_time >= state['next']:
+            state['next'] = processed.sample.host_time + 0.5
+            print(f'  x={x:4d} y={y:4d} button={"PRESSED" if button else "idle"}'
+                  + ('' if reader.ready else '   (measuring centre: leave the stick still for 3 s)'), flush=True)
+
+    def on_event(event):
+        if link:
+            link.send(event)
+        print(f'  >>> {event.direction:5} -> {event.command}' + ('  (sent)' if link else ''), flush=True)
+
+    pipeline.on_sample(on_sample)
+    pipeline.on_event(on_event)
+    live = Live(args.port, pipeline)
+    try:
+        live.start()
+        print('Joystick test. Ctrl+C stops. A reading stuck at 0 or 4095 means a wire or power problem.')
+        live.wait(quiet=True)
+    finally:
+        live.finish()
+        if link:
+            link.stop()
+    if not reader.ready:
+        print('The joystick centre was never measured: no joystick connected, or the stick was never still.')
     return 0
 
 
 def cmd_replay(args):
-    """Offline classification of a recording, with the protocol label at each event."""
-    model = json.loads(Path(args.model).read_text(encoding='utf-8'))
+    """Offline CYCLE detection on a recording, with the protocol label at each CYCLE."""
+    model = load_model(args.model)
     recording = load_recording(args.recording)
-    pipeline = Pipeline(recording.sample_rate, classifier=GestureClassifier(model, emit_candidates=args.candidates))
-    labels = dict(zip(recording.index.tolist(), recording.label))
-    pipeline.on_gesture(lambda e: print_event(
-        e, f'{e.start_index / recording.sample_rate:8.2f}s [{labels.get(e.start_index, "")}]'))
-    replay(recording, pipeline)
+    position = {int(v): i for i, v in enumerate(recording.index)}
+    for event in detect(recording, model):
+        i = position[event.index]
+        print(f'{i / recording.sample_rate:8.2f}s  CYCLE  [{recording.label[i] or "-"}]  shift {event.shift:+.0f}')
     return 0
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='python -m eog_acquisition', description=__doc__)
-    sub = parser.add_subparsers(dest='command', required=True)
+    sub = parser.add_subparsers(dest='subcommand', required=True)  # 'command' is run's --command option
 
     def device_args(p, in_plus=True):
         p.add_argument('--port', default=DEFAULT_PORT, help=f'serial port (default {DEFAULT_PORT})')
@@ -368,31 +446,43 @@ def main(argv=None):
     p.add_argument('--plot', action='store_true')
     p.set_defaults(func=cmd_session)
 
-    p = sub.add_parser('calibrate', help='derive a model from a calibration recording')
-    p.add_argument('recording')
-    p.add_argument('--out')
+    p = sub.add_parser('calibrate', help=cmd_calibrate.__doc__)
+    p.add_argument('recordings', nargs='+', help='guided-session recording(s) with LEFT/RIGHT trials')
+    p.add_argument('--out', help='model path (default data/models/cycle-<time>.json)')
+    p.add_argument('--min-recall', type=float, default=MIN_RECALL,
+                   help=f'share of deliberate looks that must give a CYCLE; precision is maximised above it '
+                        f'(default {MIN_RECALL})')
     p.set_defaults(func=cmd_calibrate)
 
-    p = sub.add_parser('evaluate', help='score a held-out recording; --apply enables passing gestures')
-    p.add_argument('recording')
-    p.add_argument('--model', required=True)
-    p.add_argument('--apply', action='store_true')
-    p.add_argument('--allow-same', action='store_true', help=argparse.SUPPRESS)
+    p = sub.add_parser('evaluate', help=cmd_evaluate.__doc__)
+    p.add_argument('recordings', nargs='+')
+    p.add_argument('--model', default=str(DEFAULT_MODEL))
     p.set_defaults(func=cmd_evaluate)
 
     p = sub.add_parser('run', help=cmd_run.__doc__)
     device_args(p)
-    p.add_argument('--model', required=True)
-    p.add_argument('--candidates', action='store_true', help='also print gestures that have not passed evaluation')
+    p.add_argument('--model', default=str(DEFAULT_MODEL), help='CYCLE model (default: the team model in models/)')
+    p.add_argument('--dashboard', action='store_true', help='send each CYCLE to the EqualCare backend')
+    p.add_argument('--server', default=DEFAULT_SERVER)
+    p.add_argument('--command', choices=COMMANDS, default='PREVIOUS',
+                   help='dashboard command per eye CYCLE (default PREVIOUS: the highlight moves left)')
+    p.add_argument('--no-joystick', action='store_true', help='ignore the joystick channels')
+    p.add_argument('--invert-joystick', action='store_true', help='swap NEXT and PREVIOUS for the joystick')
     p.add_argument('--events', help='event log CSV (default data/events/events-<time>.csv)')
     p.add_argument('--record', help='also record raw samples to this path')
     p.add_argument('--plot', action='store_true')
     p.set_defaults(func=cmd_run)
 
+    p = sub.add_parser('joystick', help=cmd_joystick.__doc__)
+    device_args(p, in_plus=False)
+    p.add_argument('--dashboard', action='store_true', help='also send joystick commands to the backend')
+    p.add_argument('--server', default=DEFAULT_SERVER)
+    p.add_argument('--invert-joystick', action='store_true')
+    p.set_defaults(func=cmd_joystick)
+
     p = sub.add_parser('replay', help=cmd_replay.__doc__)
     p.add_argument('recording')
-    p.add_argument('--model', required=True)
-    p.add_argument('--candidates', action='store_true')
+    p.add_argument('--model', default=str(DEFAULT_MODEL))
     p.set_defaults(func=cmd_replay)
 
     args = parser.parse_args(argv)

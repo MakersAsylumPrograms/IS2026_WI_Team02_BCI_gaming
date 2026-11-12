@@ -1,4 +1,4 @@
-"""Recordings (raw samples + labels), their metadata, gesture event logs and replay.
+"""Recordings (raw samples + labels), their metadata, CYCLE event logs and replay.
 
 A recording is two files:
   <name>.csv   sample_index,counter,raw,host_time,gap_before,stall,label,trial
@@ -17,8 +17,7 @@ from .protocol import BOARD_ID, RESOLUTION_BITS, SAMPLE_RATE, Sample
 
 FORMAT = 'equalcare-eog-recording/1'
 COLUMNS = ('sample_index', 'counter', 'raw', 'host_time', 'gap_before', 'stall', 'label', 'trial')
-EVENT_COLUMNS = ('utc_time', 'host_time', 'gesture', 'start_index', 'decided_index', 'peak_counts',
-                 'distance', 'validated')
+EVENT_COLUMNS = ('utc_time', 'host_time', 'source', 'command', 'index', 'direction', 'shift_counts')
 
 
 def utc_now():
@@ -40,7 +39,7 @@ class Recorder:
         self.meta_path = self.path.with_suffix('.json')
         self.meta = dict(format=FORMAT, board=BOARD_ID, port=port, sample_rate=SAMPLE_RATE,
                          adc_bits=RESOLUTION_BITS, units='raw ADC counts (uncalibrated; not microvolts)',
-                         channel='1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)',
+                         channel='1 (GPIO 5, BioAmp EXG Pill v3, horizontal EOG)',
                          in_plus_electrode=in_plus, started_utc=utc_now(), chordspy=chordspy_version(),
                          notes=notes, protocol=protocol or {})
         if self.meta_path.exists():
@@ -114,7 +113,7 @@ def replay(recording, pipeline):
 
 
 class EventLog:
-    """Appends emitted gestures to a CSV file and returns the line printed to the terminal."""
+    """Appends emitted eye (CYCLE) and joystick events to a CSV file."""
 
     def __init__(self, path):
         self.path = Path(path)
@@ -127,8 +126,8 @@ class EventLog:
 
     def write(self, event):
         stamp = utc_now()
-        self._csv.writerow((stamp, f'{event.host_time:.6f}', event.gesture, event.start_index, event.decided_index,
-                            event.peak, event.distance, int(event.validated)))
+        self._csv.writerow((stamp, f'{event.host_time:.6f}', event.source, event.command, event.index,
+                            event.direction, getattr(event, 'shift', '')))
         self._file.flush()
         return stamp
 

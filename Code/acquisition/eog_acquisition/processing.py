@@ -100,23 +100,27 @@ class ProcessedSample:
     label: str          # protocol label active when the sample arrived ('' outside sessions)
     trial: int
     ready: bool = True  # filter warmed up (no recent start or discontinuity)
+    gaze: float = float('nan')  # recovered gaze level from the CYCLE detector (nan without one)
 
 
 class Pipeline:
     """Every accepted sample passes through process() exactly once, in order:
-    health -> filter -> recorder -> sample callbacks -> classifier -> gesture callbacks.
+    health -> filter -> detector -> joystick -> recorder -> sample callbacks -> event callbacks.
 
     Device reader threads call it with batches: `device.start(pipeline)`.
+    The EOG detector (cycle.CycleDetector) and the joystick (joystick.JoystickReader) are optional;
+    raw values are never modified.
     """
 
-    def __init__(self, sample_rate=SAMPLE_RATE, classifier=None, recorder=None):
+    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None):
         self.filter = EOGFilter(sample_rate)
         self.health = HealthMonitor(sample_rate)
-        self.classifier = classifier
+        self.detector = detector
+        self.joystick = joystick
         self.recorder = recorder
         self._tag = ('', 0)
         self._sample_callbacks = []
-        self._gesture_callbacks = []
+        self._event_callbacks = []
         self._last_index = None
         self.processed = 0
 
@@ -124,12 +128,17 @@ class Pipeline:
         """callback(ProcessedSample) for every sample, e.g. plotting or later integration."""
         self._sample_callbacks.append(callback)
 
-    def on_gesture(self, callback):
-        """callback(GestureEvent) for each emitted LEFT / RIGHT / BLINK."""
-        self._gesture_callbacks.append(callback)
+    def on_event(self, callback):
+        """callback(event) for each CycleEvent (eyes) and JoystickEvent (joystick), in sample order."""
+        self._event_callbacks.append(callback)
 
     def set_label(self, label, trial=0):
         self._tag = (label, trial)  # one assignment, so the reader thread never sees half an update
+
+    @property
+    def current_label(self):
+        """The label being applied to incoming samples (the guided session's current step)."""
+        return self._tag[0]
 
     def __call__(self, samples):
         for sample in samples:
@@ -141,20 +150,25 @@ class Pipeline:
         self._last_index = sample.index
         label, trial = tag if tag is not None else self._tag
         if sample.gap_before or sample.stall:
-            self.filter.reset()  # never filter across a hole in the data
-            if self.classifier:
-                self.classifier.reset()
+            self.filter.reset()  # never filter or detect across a hole in the data
+            if self.detector:
+                self.detector.reset()
         filtered = self.filter.process(sample.raw)
         clipped = self.health.update(sample)
         ready = self.filter.ready
-        processed = ProcessedSample(sample, filtered, clipped, ready and not clipped, label, trial, ready)
+        events, gaze = [], float('nan')
+        if self.detector:
+            events = self.detector.step(sample.raw, clipped, sample.index, sample.host_time)
+            gaze = self.detector.value
+        if self.joystick:
+            events = events + self.joystick.update(sample)
+        processed = ProcessedSample(sample, filtered, clipped, ready and not clipped, label, trial, ready, gaze)
         if self.recorder:
             self.recorder.write(processed)
         self.processed += 1
         for callback in self._sample_callbacks:
             callback(processed)
-        if self.classifier:
-            for event in self.classifier.update(processed):
-                for callback in self._gesture_callbacks:
-                    callback(event)
+        for event in events:
+            for callback in self._event_callbacks:
+                callback(event)
         return processed

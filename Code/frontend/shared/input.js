@@ -17,6 +17,11 @@ const KEY_MAP = {
 // double-press, double-click or a noisy gesture from submitting twice.
 const SELECT_DEBOUNCE_MS = 700;
 
+// Device input (eyes / joystick) is fetched this often while the patient tab is visible.
+// The backend is on the same laptop or LAN, so 20 small requests a second are cheap and
+// keep the highlight within ~50 ms of the gesture (it was 250 ms, which felt laggy).
+const POLL_MS = 50;
+
 export function createInput(handleCommand) {
   let lastSelectAt = -Infinity;
 
@@ -110,7 +115,7 @@ export function startDevicePolling(api, input, onStatus) {
           onStatus(error.status === 401 ? 'signed-out' : 'offline');
         }
       }
-      await sleep(250);   // wait between polls; polls never overlap
+      await sleep(POLL_MS);   // wait between polls; polls never overlap
     }
   }
   loop();

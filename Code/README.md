@@ -82,27 +82,22 @@ EQUALCARE_DEVICE_TOKEN apply to that process only and take precedence over the f
 The simulator reads the saved device
 token unless its terminal overrides EQUALCARE_DEVICE_TOKEN.
 
-## Wi-Fi and ESP32 configuration
+## Network and ESP32
 
-1. Join both laptops and ESP32 to the same LAN/hotspot; ESP32 needs 2.4 GHz.
+The ESP32 (EOG + joystick) connects to the **patient laptop by USB**; `acquisition/`
+on that laptop sends its commands to the backend (see [acquisition/README.md](acquisition/README.md)).
+Only the nurse laptop uses the network:
+
+1. Join both laptops to the same LAN/hotspot.
 2. Run `ipconfig` on the patient laptop and find its Wi-Fi IPv4 address.
    Reserve that address where possible; keep the laptop awake.
 3. Allow inbound TCP 8000 for the backend on Windows' Private network profile.
    Check the health URL from the nurse laptop. If unreachable, check the IP,
    firewall and hotspot/client isolation.
-4. Copy `firmware/config.example.h` to gitignored `firmware/config.h`:
-
-| Firmware setting | Value |
-| --- | --- |
-| EC_WIFI_SSID | Wi-Fi/hotspot name |
-| EC_WIFI_PASSWORD | Wi-Fi/hotspot password, separate from dashboard passwords |
-| EC_SERVER | http://PATIENT-LAPTOP-IP:8000 |
-| EC_DEVICE_ID | esp32-01, unless overridden on the backend |
-| EC_DEVICE_TOKEN | Device token from the backend launcher |
 
 The frontend uses the relative API_BASE `/api/v1` in shared/api.js; keep it
 same-origin. Opening the nurse URL automatically uses that laptop-hosted backend.
-If the host IP changes, update the nurse URL and EC_SERVER together.
+If the host IP changes, update the nurse URL.
 Run one backend process; command buffers/leases are in memory. Plain HTTP and
 local credentials are intended for a controlled LAN demonstration.
 
@@ -148,9 +143,8 @@ PENDING means saved by the backend, not that the nurse has seen it.
 | frontend/shared/patient.js | Menu, confirmation, submission, retry and status screens |
 | frontend/shared/staff.js | Request ordering, Seen/Done, waiting timers and sound alerts |
 | frontend/shared/styles.css | Shared and screen-specific styles |
-| firmware/firmware.ino | Serial n/p/s transport demonstration; no GPIO acquisition |
-| firmware/EqualCareTransport.h/.cpp | Nonblocking emit interface and separate network worker |
-| firmware/config.example.h | Wi-Fi, server and device credential template |
+| firmware/ESP32-S3/ESP32-S3.ino | ESP32-S3: EOG (GPIO 5) + joystick (GPIO 1/2/6) at 250 Hz over USB (Chords packets) |
+| acquisition/ | Laptop side: eye CYCLE detection, joystick, and sending commands to the backend |
 
 Full request/response schemas: [OpenAPI](../Documentation/openapi.json).
 Browser sign-in uses a session cookie; writes require X-CSRF-Token. One cookie can
@@ -209,24 +203,17 @@ Tests use temporary databases and test credentials. Coverage includes lifecycle,
 retries, persistence, permissions, concurrent sends, expired/duplicate commands,
 confirmation/cancel, offline recovery and device-only navigation.
 
-EOG path (current milestone): BioAmp EXG Pill v3 -> GPIO 1 -> ESP32-S3 running
-`firmware/ESP32-S3` (Chords protocol, 250 Hz) -> USB-to-UART -> `acquisition/`
-(official chordspy + filtering, per-user calibration and LEFT / RIGHT / BLINK
-classification on the laptop). See [acquisition/README.md](acquisition/README.md) for
-flashing, the hardware session and validation targets. It does not yet send
-dashboard commands. Later, one confirmed gesture maps to one NEXT/PREVIOUS/SELECT with
-source `eog`; never send every analog sample or repeat a held gesture. The joystick
-uses the same command contract. The backend does not process raw signals.
+Device path: BioAmp EXG Pill v3 (GPIO 5) and joystick (GPIO 1/2/6) -> ESP32-S3 running
+`firmware/ESP32-S3` (Chords protocol, 250 Hz) -> USB-to-UART -> `acquisition/` on the
+patient laptop. A held look to either side is one eye CYCLE (PREVIOUS, source `eog`); joystick
+pushes are NEXT/PREVIOUS and its press is SELECT (source `joystick`). One gesture = one command;
+analog samples never leave the laptop. Run `python -m eog_acquisition run --dashboard` from
+`acquisition/`; see [acquisition/README.md](acquisition/README.md). The backend does not process
+raw signals.
 
-Before physical integration, the hardware owner must provide the exact board
-model, GPIO/power wiring table, BioAmp output voltage range and joystick switch
-wiring. Verify ADC compatibility with Wi-Fi, thresholds, debounce, EOG
-calibration and fallback. Compile and check memory on the actual selected board.
 During electrode use the laptop runs on battery with its charger and any
 mains-powered peripherals disconnected (the USB-to-UART link goes only to that
-battery-powered laptop); Serial simulation is for bench testing without electrodes.
-Two physical laptops, actual ESP32 operation and the two-second feedback target
-on the team's LAN still need verification.
+battery-powered laptop). `backend/simulate_device.py` sends commands without hardware.
 
 Original flowchart/hardware diagram: [Documentation](../Documentation/).
 Supplier datasheets: [Reference_Data](../Reference_Data/).

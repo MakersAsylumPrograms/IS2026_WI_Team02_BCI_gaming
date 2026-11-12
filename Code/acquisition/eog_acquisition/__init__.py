@@ -1,23 +1,17 @@
-"""EqualCare EOG acquisition: ESP32-S3 + BioAmp EXG Pill v3 -> Chords USB -> LEFT / RIGHT / BLINK.
+"""EqualCare EOG acquisition: ESP32-S3 + BioAmp EXG Pill v3 -> Chords USB -> CYCLE commands.
 
-Integration points for later milestones (nothing here sends dashboard commands):
+One command, CYCLE: a look to either side, held. Each CYCLE can move the dashboard highlight:
     device = EOGDevice('COM7'); device.open()
-    pipeline = Pipeline(classifier=GestureClassifier(load_model(path)))
+    pipeline = Pipeline(detector=CycleDetector(load_model()))
     pipeline.on_sample(callback)    # every ProcessedSample, in order, exactly once
-    pipeline.on_gesture(callback)   # every emitted GestureEvent
-    device.start(pipeline) ... device.close()
+    pipeline.on_event(callback)     # every CycleEvent
+    link = DashboardLink().start(); pipeline.on_event(link.send)
+    device.start(pipeline) ... device.close(); link.stop()
 """
-import json
-from pathlib import Path
-
-from .classifier import GESTURES, GestureClassifier, GestureEvent
+from .cycle import CycleDetector, CycleEvent, CycleModel, load_model
+from .dashboard import DashboardLink
 from .device import DEFAULT_PORT, DeviceError, EOGDevice
 from .processing import Pipeline, ProcessedSample
 
-
-def load_model(path):
-    return json.loads(Path(path).read_text(encoding='utf-8'))
-
-
-__all__ = ['EOGDevice', 'DeviceError', 'DEFAULT_PORT', 'Pipeline', 'ProcessedSample', 'GestureClassifier',
-           'GestureEvent', 'GESTURES', 'load_model']
+__all__ = ['EOGDevice', 'DeviceError', 'DEFAULT_PORT', 'Pipeline', 'ProcessedSample', 'CycleDetector', 'CycleEvent',
+           'CycleModel', 'DashboardLink', 'load_model']

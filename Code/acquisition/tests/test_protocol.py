@@ -119,6 +119,14 @@ def test_sync_split_across_reads():
     assert packet.channels[0] == 42 and decoder.junk_bytes == 4
 
 
-def test_inactive_slots_are_counted():
-    _, decoder = decode_all(encode_packet(0, [1, 2]))
+def test_joystick_channels_are_active_and_slots_5_to_16_are_checked():
+    _, decoder = decode_all(encode_packet(0, [1, 2048, 2048, 1]))   # EOG + joystick X, Y, button
+    assert decoder.inactive_nonzero == 0
+    _, decoder = decode_all(encode_packet(0, [1, 2048, 2048, 1, 7]))
     assert decoder.inactive_nonzero == 1
+
+
+def test_samples_carry_the_joystick_channels():
+    [packet], _ = decode_all(encode_packet(0, [1900, 3100, 50, 1]))
+    sample = Sequencer().next(packet, 100.0)
+    assert sample.raw == 1900 and sample.joystick == (3100, 50, 1)

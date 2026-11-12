@@ -1,0 +1,55 @@
+{
+  "format": "equalcare-eog-cycle/1",
+  "tau": 0.15,
+  "threshold": 1932.4,
+  "hold": 1.1,
+  "leak": 8.0,
+  "lowpass_hz": 10.0,
+  "baseline_seconds": 30.0,
+  "reference_seconds": 1.0,
+  "settle": 0.6,
+  "away_timeout": 8.0,
+  "max_clipped": 0.35,
+  "warmup": 3.0,
+  "sample_rate": 250,
+  "calibration": {
+    "sources": [
+      "data\\recordings\\calibration-20261112-125337.csv"
+    ],
+    "tau": 0.15,
+    "plateau_flatness": 0.001,
+    "typical_shift": 2415.5,
+    "clean_looks": 19,
+    "threshold": 1932.4,
+    "hold": 1.1,
+    "min_recall": 0.8,
+    "in_sample_precision": 0.762,
+    "in_sample_recall": 0.8,
+    "warnings": [],
+    "per_recording": [
+      {
+        "trials": 40,
+        "hits": 32,
+        "missed": [
+          10,
+          17,
+          25,
+          29,
+          31,
+          37,
+          50,
+          70
+        ],
+        "recall": 0.8,
+        "precision": 0.762,
+        "protocol_precision": 0.914,
+        "false_during_protocol": 3,
+        "false_after_blink_cues": 1,
+        "false_per_minute": 0.46,
+        "natural_events": 7,
+        "natural_per_minute": 3.5,
+        "minutes": 8.51
+      }
+    ]
+  }
+}

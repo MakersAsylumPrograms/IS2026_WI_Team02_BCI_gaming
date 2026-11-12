@@ -1,7 +1,8 @@
 """Chords USB packet format sent by Code/firmware/ESP32-S3 and turning packets into ordered samples.
 
 Packet (36 bytes): 0xC7 0x7C, rolling counter (0-255), 16 big-endian uint16 channel
-slots, 0x01. Channel 1 carries the EOG signal; slots 2-16 are inactive (always 0).
+slots, 0x01. Channel 1 carries the EOG signal; channels 2-4 the joystick (X, Y, button
+0/1); slots 5-16 are inactive (always 0).
 """
 from dataclasses import dataclass
 
@@ -15,7 +16,9 @@ SYNC = bytes((0xC7, 0x7C))
 END_BYTE = 0x01
 HEADER_LEN = 3
 PACKET_LEN = HEADER_LEN + 2 * NUM_SLOTS + 1  # 36
-EOG_SLOT = 0  # channel 1 (GPIO 1)
+EOG_SLOT = 0  # channel 1 (EOG, GPIO 5)
+JOYSTICK_SLOTS = slice(1, 4)  # channels 2-4: X (GPIO 1), Y (GPIO 2), button (GPIO 6, 1 = pressed)
+FIRST_INACTIVE_SLOT = 4       # channels 5-16 are always 0
 COUNTER_MODULO = 256
 
 
@@ -34,6 +37,7 @@ class Sample:
     host_time: float  # time.monotonic() when the packet was decoded
     gap_before: int   # samples missing immediately before this one, from the counter (0 = contiguous)
     stall: bool = False  # nothing arrived for > STALL_SECONDS: whole counter cycles may also be missing
+    joystick: tuple = None  # (x, y, button) from channels 2-4; None when replaying a recording
 
 
 def encode_packet(counter, channels):
@@ -93,7 +97,7 @@ class StreamDecoder:
         channels = tuple(int.from_bytes(raw[i:i + 2], 'big') for i in range(HEADER_LEN, PACKET_LEN - 1, 2))
         if max(channels) > ADC_MAX:
             return None
-        if any(channels[1:]):
+        if any(channels[FIRST_INACTIVE_SLOT:]):
             self.inactive_nonzero += 1
         return Packet(counter=raw[2], channels=channels)
 
@@ -142,4 +146,5 @@ class Sequencer:
         self.missing += gap
         self._last = (index, packet.counter, host_time)
         return Sample(index=index, counter=packet.counter, raw=packet.channels[EOG_SLOT],
-                      host_time=host_time, gap_before=gap, stall=stall)
+                      host_time=host_time, gap_before=gap, stall=stall,
+                      joystick=tuple(packet.channels[JOYSTICK_SLOTS]))
