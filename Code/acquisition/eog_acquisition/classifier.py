@@ -26,11 +26,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-GESTURES = ('LEFT', 'RIGHT', 'BLINK')
+GESTURES = ('LEFT', 'RIGHT', 'BLINK', 'DOUBLE_BLINK')
 MOVES = ('LEFT', 'RIGHT')
 REJECT = 'NATURAL_BLINK'  # calibrated from ordinary blinks; matched but never emitted
-FEATURES = ('log_peak', 'peak_time', 'persistence', 'opposite')
-FEATURE_FLOOR = (0.10, 0.02, 0.05, 0.05)  # minimum template spread per feature
+FEATURES = ('log_peak', 'peak_time', 'persistence', 'opposite', 'paired_peak')
+FEATURE_FLOOR = (0.10, 0.02, 0.05, 0.05, 0.05)  # minimum template spread per feature
 
 WINDOW_SECONDS = 0.5      # decision delay after onset
 PERSIST_AFTER = 0.2       # persistence = signal 0.2 s after the peak, relative to the peak
@@ -70,10 +70,11 @@ class Excursion:
     opposite: float       # largest swing to the other polarity / peak
     valid: bool
     reason: str = ''
+    paired_peak: float = 0.0
 
     @property
     def features(self):
-        return np.array([np.log(max(self.peak, 1e-6)), self.peak_time, self.persistence, self.opposite])
+        return np.array([np.log(max(self.peak, 1e-6)), self.peak_time, self.persistence, self.opposite, self.paired_peak])
 
     @property
     def movement_like(self):
@@ -145,9 +146,19 @@ class ExcursionDetector:
         signal = values * self._sign
         peak = float(signal[k])
         after = float(signal[min(k + self.persist_after, len(signal) - 1)])
+        # Two distinct same-polarity peaks, 0.20–0.40 s apart, with a valley
+        # between them. Opposite-polarity filter rebound cannot form a pair.
+        from scipy.signal import find_peaks
+        peaks, _ = find_peaks(signal, height=peak * 0.35, prominence=peak * 0.25,
+                              distance=max(1, int(0.20 * self.sample_rate)))
+        paired = 0.0
+        for a, b in zip(peaks, peaks[1:]):
+            if 0.20 <= (b - a) / self.sample_rate <= 0.40:
+                if signal[a:b + 1].min() < min(signal[a], signal[b]) * 0.5:
+                    paired = max(paired, min(signal[a], signal[b]) / peak)
         return Excursion(self._start, index, host_time, self._sign, peak, k / self.sample_rate,
                          after / peak, max(0.0, -float(signal.min())) / peak,
-                         valid=not self._bad, reason=self._bad or '')
+                         valid=not self._bad, reason=self._bad or '', paired_peak=paired)
 
 
 class GestureClassifier:
@@ -158,6 +169,8 @@ class GestureClassifier:
     """
 
     def __init__(self, model, emit_candidates=False):
+        if tuple(model.get('features', ())) != FEATURES:
+            raise ValueError('This model predates double-blink support. Record a new calibration session.')
         self.model = model
         self.sample_rate = model['sample_rate']
         self.detector = ExcursionDetector(model['onset'], model['release'], self.sample_rate)
@@ -190,7 +203,7 @@ class GestureClassifier:
 
     def _is_return(self, excursion, label):
         """An opposite-polarity excursion big enough to be the eyes coming back (and not a blink)."""
-        return (excursion.sign == -self.away.sign and label not in ('BLINK', REJECT)
+        return (excursion.sign == -self.away.sign and label not in ('BLINK', 'DOUBLE_BLINK', REJECT)
                 and (label in MOVES or excursion.movement_like
                      or excursion.peak >= RETURN_PEAK_FRACTION * self.away.peak))
 
@@ -202,6 +215,8 @@ class GestureClassifier:
         """Nearest template whose polarity matches, or (None, reason)."""
         scores = []
         for name, (mean, std, sign) in self.templates.items():
+            if (name == 'DOUBLE_BLINK') != (excursion.paired_peak >= 0.35):
+                continue
             if sign and sign != excursion.sign:
                 continue
             scores.append((float(np.sqrt(np.mean(((excursion.features - mean) / std) ** 2))), name))

@@ -16,12 +16,13 @@ PROMPTS = {
     'LEFT': 'Look LEFT at the left mark and hold.',
     'RIGHT': 'Look RIGHT at the right mark and hold.',
     'CENTER': 'Look back at the CENTRE mark.',
-    'BLINK': 'One firm, deliberate BLINK.',
+    'BLINK': 'One comfortable, deliberate BLINK.',
+    'DOUBLE_BLINK': 'Blink TWICE comfortably, about a quarter second apart, then keep eyes open.',
     'REST': 'Rest (keep looking at the centre).',
     'NATURAL': 'Use the screen normally and blink naturally. No deliberate far LEFT/RIGHT looks.',
 }
 TONES = {'LEFT': (440, 300), 'RIGHT': (880, 300), 'CENTER': (660, 120), 'BLINK': (1320, 120),
-         'NEUTRAL': (660, 500), 'NATURAL': (660, 500)}  # Hz, ms; REST is silent
+         'DOUBLE_BLINK': (1760, 300), 'NEUTRAL': (660, 500), 'NATURAL': (660, 500)}  # Hz, ms; REST is silent
 
 
 @dataclass(frozen=True)
@@ -75,7 +76,7 @@ def run_session(pipeline, protocol, rng, keep_going=lambda: True, say=print, ton
     total_trials = sum(1 for s in steps if s.trial and s.label in GESTURES)
     total_seconds = sum(s.seconds for s in steps)
     say(f'Session: {total_trials} trials, about {total_seconds / 60:.1f} minutes. '
-        'Tones: low = LEFT, high = RIGHT, short mid = CENTRE, very high = BLINK.')
+        'Tones: low = LEFT, high = RIGHT, short mid = CENTRE, very high = BLINK, highest long tone = DOUBLE BLINK.')
     begin = time.monotonic()
     try:
         for step in steps:

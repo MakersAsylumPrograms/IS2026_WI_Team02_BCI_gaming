@@ -52,9 +52,11 @@ def synthetic_recording(seed=0, protocol=None, left_sign=1, gaze_amp=300.0, nois
             position = new
         else:
             gaze[cursor:cursor + n] = position
-        if step.label == 'BLINK':
+        if step.label in ('BLINK', 'DOUBLE_BLINK'):
             blinks.append((react, rng.normal(deliberate_blink[0], deliberate_blink[0] * 0.14),
                            rng.normal(deliberate_blink[1], deliberate_blink[1] * 0.13)))
+            if step.label == 'DOUBLE_BLINK':
+                blinks.append((react + int(0.25 * FS), deliberate_blink[0], deliberate_blink[1]))
         elif step.label in ('NEUTRAL', 'REST', 'NATURAL', 'CENTER'):
             count = rng.poisson(blink_rate_per_min * step.seconds / 60)
             for start in rng.uniform(cursor + 0.2 * FS, cursor + n - 0.5 * FS, count).astype(int):

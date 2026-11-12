@@ -222,6 +222,8 @@ def cmd_session(args):
 
     _stream(args, recorder, plot=args.plot, session=session)
     print(f'Saved {recorder.path}' + ('' if finished.get('ok') else '  (INCOMPLETE: stopped early)'))
+    if args.set == 'calibration' and finished.get('ok') and args.auto_calibrate:
+        return cmd_calibrate(argparse.Namespace(recording=str(recorder.path), out=None))
     if args.set == 'calibration':
         print(f'Next: python -m eog_acquisition calibrate "{recorder.path}"')
     else:
@@ -357,6 +359,7 @@ def main(argv=None):
     p = sub.add_parser('session', help=cmd_session.__doc__)
     device_args(p)
     p.add_argument('--set', choices=('calibration', 'evaluation'), required=True)
+    p.add_argument('--auto-calibrate', action='store_true', help='save and calibrate automatically after a completed calibration session')
     p.add_argument('--trials', type=int, default=20, help='trials per gesture (default 20)')
     p.add_argument('--neutral', type=float, default=30, help='neutral-gaze seconds (default 30)')
     p.add_argument('--natural', type=float, default=120, help='natural-use seconds (default 120)')

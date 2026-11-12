@@ -72,6 +72,41 @@ This creates a separate Python 3.11 `.venv` and installs official `chordspy` 0.2
 It is separate from the dashboard's environment. All commands below run from `Code/acquisition`:
 `.venv\Scripts\python.exe -m eog_acquisition <command>` (add `--port COMx` if not COM7).
 
+## One-command guided calibration and evaluation
+
+Keep the initial setup/check/view commands unchanged. Close the viewer, then run:
+
+```powershell
+.venv\Scripts\python.exe -m eog_acquisition session --set calibration --in-plus left --port COM7 --auto-calibrate
+```
+
+For the complete session with automatic filenames, calibration and optional evaluation,
+run this instead from `Code/acquisition`:
+
+```powershell
+& ./start-calibration.ps1
+```
+
+Keep IN+ on the left eye for this helper. Follow the randomized prompts: NEUTRAL
+(centre, 30 seconds), then 20 trials each of LEFT, RIGHT, BLINK and DOUBLE_BLINK,
+then two minutes of natural use. LEFT/RIGHT: move eyes, hold until CENTRE,
+then return to centre and rest. BLINK: one comfortable blink. DOUBLE_BLINK:
+two quick comfortable blinks about a quarter second apart, then eyes open.
+Keep your head still and avoid squeezing hard. Trials are shuffled; do not repeat
+a memorized order. Allow about ten minutes per complete session.
+
+Let the session finish automatically. Raw data and metadata are saved, then the
+exact recording is calibrated and the model path is printed. Ctrl+C saves an
+incomplete recording and skips calibration; closing PowerShell can interrupt
+saving, so use Ctrl+C instead. Existing files are protected from overwrite.
+
+After a five-minute break, type EVALUATE at the helper's prompt to record a separate
+session and evaluate it automatically. Type RUN afterwards to view enabled local
+gestures. Press Enter at either prompt to finish. There are no filename placeholders.
+Each gesture remains disabled until it passes evaluation. Double blink is experimental
+until measured on your hardware; ordinary blinks may form pairs. Decision window:
+half a second. Models from before double-blink support require fresh calibration.
+
 ## 5. Hardware session: run these in order
 
 | Step | Command | Pass when |
@@ -86,7 +121,7 @@ It is separate from the dashboard's environment. All commands below run from `Co
 | 8. Live use | `run --model data\models\model-<time>.json --plot` | gestures appear in the terminal and `data\events\` |
 
 **Session layout** (both sets): 30 s looking at a centre mark, then 20 LEFT, 20 RIGHT and
-20 BLINK trials in random order, then 2 minutes of normal use with ordinary blinks. Put the
+20 BLINK and 20 DOUBLE_BLINK trials in random order, then 2 minutes of normal use with ordinary blinks. Put the
 centre mark straight ahead and two side marks about 30° left and right. Tones tell you what
 to do, so you don't have to read the screen while looking away: low = LEFT, high = RIGHT,
 short mid = back to CENTRE, very high = BLINK. Hold each side look until the CENTRE tone.

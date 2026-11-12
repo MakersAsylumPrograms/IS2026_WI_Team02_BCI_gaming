@@ -90,12 +90,12 @@ def test_calibration_derives_polarity_and_evaluation_enables_passing_gestures(mo
     held = synthetic_recording(seed=2, started='evaluation')
     assert held_out(model, held)
     report = evaluate(held, model)
-    for gesture in ('LEFT', 'RIGHT', 'BLINK'):
+    for gesture in ('LEFT', 'RIGHT', 'BLINK', 'DOUBLE_BLINK'):
         scores = report['gestures'][gesture]
         assert scores['trials'] == 20 and scores['precision'] >= 0.9 and scores['recall'] >= 0.9, (gesture, scores)
     assert report['false_per_minute'] <= 1.0 and report['natural_false_per_minute'] <= 1.0
     enabled = apply_evaluation(model, report)['enabled']
-    assert enabled == {g: g in report['enable'] for g in ('LEFT', 'RIGHT', 'BLINK')}
+    assert enabled == {g: g in report['enable'] for g in ('LEFT', 'RIGHT', 'BLINK', 'DOUBLE_BLINK')}
 
 
 def test_reversed_electrodes_are_resolved_by_calibration():
