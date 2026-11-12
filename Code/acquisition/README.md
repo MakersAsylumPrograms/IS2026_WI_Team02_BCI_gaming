@@ -78,9 +78,17 @@ Monitor and Plotter** before Python opens COM7.
 cd Code/acquisition
 ```
 
+<<<<<<< HEAD
 This creates a separate Python 3.11 `.venv` and installs official `chordspy` 0.2.2 (hash-pinned).
 All commands below run from `Code/acquisition` as `.venv\Scripts\python.exe -m eog_acquisition <command>`
 (add `--port COMx` if not COM7).
+=======
+This creates a separate Python 3.11–3.13 `.venv` (using the first installed compatible version)
+and installs official `chordspy` 0.2.2 (hash-pinned). If none is installed, run `py install 3.11`,
+then rerun setup.
+It is separate from the dashboard's environment. All commands below run from `Code/acquisition`:
+`.venv\Scripts\python.exe -m eog_acquisition <command>` (add `--port COMx` if not COM7).
+>>>>>>> d257b1c3ef4240ca849052b9a83073c45b452250
 
 ## 5. Use it with the dashboard
 

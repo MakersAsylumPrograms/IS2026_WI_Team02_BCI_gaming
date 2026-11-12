@@ -1,4 +1,4 @@
-# EOG acquisition environment (Python 3.11). Separate from Code/backend's dashboard venv.
+# EOG acquisition environment (Python 3.11–3.13). Separate from dashboard venv.
 #
 # Official Chords-Python (MIT, Upside Down Labs), pinned to one immutable PyPI file.
 # pip verifies the sha256 below, and chordspy 0.2.2 pins every dependency it needs
