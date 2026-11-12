@@ -21,6 +21,7 @@ Natural looks that are held just as long are indistinguishable on one channel; `
 Raw samples are only ever read.
 """
 import json
+import hashlib
 from collections import deque
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
@@ -54,6 +55,8 @@ class CycleModel:
     max_clipped: float = 0.35      # s of ADC saturation tolerated around one look
     warmup: float = 3.0            # s ignored after start or any gap in the data
     sample_rate: int = SAMPLE_RATE
+    calibration_ids: tuple = ()
+    validation: dict = None
 
     def to_dict(self):
         return dict(format=FORMAT, **asdict(self))
@@ -63,7 +66,9 @@ class CycleModel:
         if data.get('format') != FORMAT:
             raise ValueError(f'Not a CYCLE model (format {data.get("format")!r}); calibrate a new one.')
         known = {f.name for f in fields(cls)}
-        return cls(**{k: v for k, v in data.items() if k in known})
+        values = {k: v for k, v in data.items() if k in known}
+        values['calibration_ids'] = tuple(values.get('calibration_ids', ()))
+        return cls(**values)
 
 
 def load_model(path=DEFAULT_MODEL):
@@ -247,8 +252,15 @@ def score(recording, events):
     blink_cues = sorted(i for label, i in cues.values() if label not in MOVES)
     hits, false, blink_false, natural = set(), 0, 0, 0
     for event in events:
-        i = position.get(event.index, 0)
-        trial = next((t for c, t in reversed(moves) if c <= i <= c + SCORE_WINDOW_SECONDS * fs), None)
+        i = position.get(event.index)
+        onset = position.get(event.start_index)
+        if i is None or onset is None:
+            false += 1
+            continue
+        trial = int(recording.trial[onset]) if recording.label[onset] in MOVES else None
+        cue = cues.get(trial)
+        if not cue or i < onset or i - cue[1] > SCORE_WINDOW_SECONDS * fs:
+            trial = None
         if trial is not None and trial not in hits:
             hits.add(trial)
             continue
@@ -270,6 +282,7 @@ def score(recording, events):
         false_during_protocol=false, false_after_blink_cues=blink_false,
         false_per_minute=round(false / protocol_minutes, 2) if protocol_minutes else None,
         natural_events=natural, natural_per_minute=round(natural / natural_minutes, 2) if natural_minutes else None,
+        natural_seconds=natural_minutes * 60,
         minutes=round(protocol_minutes + natural_minutes, 2))
 
 
@@ -277,14 +290,23 @@ def _plateau_slopes(recording, model):
     """Signed flatness of every held LEFT/RIGHT plateau for this tau (0 = perfectly flat)."""
     fs = recording.sample_rate
     gaze, flags = GazeRecovery(model), _clipped_flags(recording.raw)
-    x = np.array([gaze.update(int(v)) for v in recording.raw])
+    detector = CycleDetector(model)
+    recovered = []
+    for j, value in enumerate(recording.raw):
+        if recording.gap_before[j] or recording.stall[j]:
+            detector.reset()
+        detector.step(int(value), bool(flags[j]), int(recording.index[j]), float(recording.host_time[j]))
+        recovered.append(detector.value)
+    x = np.array(recovered)
     slopes, shifts = [], []
     for label, i in _cues(recording).values():
         if label not in MOVES or i < fs:
             continue
         before = float(np.median(x[i - int(0.5 * fs):i]))
         window = x[i:i + 2 * fs] - before
-        if len(window) < 2 * fs or flags[i:i + 2 * fs].mean() > 0.1:
+        if (len(window) < 2 * fs or flags[i:i + 2 * fs].any()
+                or np.any(recording.gap_before[max(0, i - fs):i + 2 * fs])
+                or np.any(recording.stall[max(0, i - fs):i + 2 * fs])):
             continue
         peak = np.max(np.abs(window))
         start = int(np.argmax(np.abs(window) > 0.5 * peak))
@@ -357,4 +379,38 @@ def calibrate(recordings, base=None, min_recall=MIN_RECALL, sources=()):
                   hold=model.hold, min_recall=min_recall, in_sample_precision=round(precision, 3),
                   in_sample_recall=round(recall, 3), warnings=warnings,
                   per_recording=[score(r, detect(r, model)) for r in recordings])
+    model = replace(model, calibration_ids=tuple(recording_id(r) for r in recordings), validation=None)
     return model, report
+
+
+def recording_id(recording):
+    """Identity survives file copies and metadata/filename changes."""
+    digest = hashlib.sha256()
+    for values in (recording.raw, recording.index):
+        digest.update(np.asarray(values, dtype='<i8').tobytes())
+    return digest.hexdigest()
+
+
+def model_id(model):
+    data = model.to_dict()
+    data.pop('validation', None)
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+
+def evaluate_model(recording, model):
+    metrics = score(recording, detect(recording, model))
+    independent = bool(model.calibration_ids) and recording_id(recording) not in model.calibration_ids
+    total_false = metrics['false_during_protocol'] + metrics['natural_events']
+    precision = metrics['hits'] / (metrics['hits'] + total_false) if metrics['hits'] + total_false else 0
+    recall = metrics['hits'] / metrics['trials'] if metrics['trials'] else 0
+    natural_rate = metrics['natural_events'] * 60 / metrics['natural_seconds'] if metrics['natural_seconds'] else float('inf')
+    passed = bool(independent and metrics['trials'] >= 40
+                  and metrics['natural_seconds'] >= 119
+                  and precision >= .9 and recall >= .9 and natural_rate <= 1)
+    return dict(passed=passed, independent=independent, recording_id=recording_id(recording),
+                model_id=model_id(model), metrics=metrics)
+
+
+def dashboard_approved(model):
+    validation = model.validation or {}
+    return validation.get('passed') is True and validation.get('model_id') == model_id(model)

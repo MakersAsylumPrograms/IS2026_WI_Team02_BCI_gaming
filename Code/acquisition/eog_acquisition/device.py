@@ -161,7 +161,12 @@ class EOGDevice:
                 if packets:
                     samples = [self.sequencer.next(packet, now) for packet in packets]
                     self.samples_delivered += len(samples)
-                    sink(samples)
+                    try:
+                        sink(samples)
+                    except Exception as exc:
+                        self.error = f'Input processing failed: {exc}'
+                        self.on_status('disconnected', self.error)
+                        return
                     if silent:
                         silent = False
                         self.on_status('resumed', 'Data is arriving again')

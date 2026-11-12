@@ -1,6 +1,18 @@
 # EOG + joystick input for the dashboard
 
-**BioAmp EXG Pill v3 (GPIO 5) + joystick (GPIO 1/2/6) → ESP32-S3 → USB-to-UART (COM7) → official Chords Python → dashboard**
+**BioAmp EXG Pill v3 (GPIO 1) + joystick (GPIO 4/5/6) → ESP32-S3 → USB-to-UART (COM7) → official Chords Python → dashboard**
+
+Normal startup: double-click root `Start-EqualCare.cmd`. Both inputs stay active with
+no joystick priority. Close other serial tools first. The bundled EOG model is not
+independently approved, so dashboard startup permits joystick control but suppresses
+EOG commands. Local EOG diagnostics remain available.
+
+Use `start-calibration.ps1` for recording, automatic calibration and a separate
+evaluation. Approval requires an independent recording, ≥40 movement trials,
+≥119 seconds natural use, precision/recall ≥0.90 and natural false events ≤1/minute.
+The helper updates the local launcher model selection after evaluation. Changing
+model parameters invalidates its approval. Physical firmware compilation and Windows
+combined-input checks remain required; synthetic tests are not hardware accuracy.
 
 The eyes give **one command, CYCLE**: look to **either side** (left or right, it does not
 matter) and **hold** for about a second. Each CYCLE moves the patient screen's highlight one
@@ -23,11 +35,11 @@ press → SELECT. Both run in one process and reach the dashboard as the device'
 | Module pin | ESP32-S3-DevKitC-1 (N16R8) |
 | --- | --- |
 | Pill VCC / GND | 3V3 / GND |
-| Pill OUT | GPIO **5** |
+| Pill OUT | GPIO **1** |
 | Joystick GND | GND |
-| Joystick +5V | 5V (team choice; 3V3 also works) |
-| Joystick VRx | GPIO **1** |
-| Joystick VRy | GPIO **2** |
+| Joystick VCC | **3V3** |
+| Joystick VRx | GPIO **4** |
+| Joystick VRy | GPIO **5** |
 | Joystick SW | GPIO **6** (internal pull-up; pressed = LOW) |
 
 **GPIO 1 sits right next to the TX and RX pins** (header order from the GND corner: GND, TX, RX,
@@ -37,9 +49,8 @@ EOG baseline of about **1,800–2,000** counts, a firm look should move it by ab
 `joystick` should print x/y values that change a lot as you push. Both axes stuck at exactly 0
 means the joystick has no power.
 
-On 5V the joystick's X/Y outputs go above the ESP32-S3's ~3.6 V pin limit at full deflection; a
-10 kΩ resistor in series in each of VRx and VRy limits the current. The ADC saturates at ~3.1 V,
-which the joystick code allows for.
+Do not power the joystick from 5 V. A series resistor alone does not reduce its analog
+output to a safe ESP32 input voltage. Reflash the corrected firmware before combined use.
 
 Horizontal EOG with three electrodes, following the Pill v3 EOG guide: IN+ and IN− at the outer
 corners of the two eyes, reference (REF) where that guide places it. Use fresh gel electrodes for
@@ -78,17 +89,11 @@ Monitor and Plotter** before Python opens COM7.
 cd Code/acquisition
 ```
 
-<<<<<<< HEAD
-This creates a separate Python 3.11 `.venv` and installs official `chordspy` 0.2.2 (hash-pinned).
-All commands below run from `Code/acquisition` as `.venv\Scripts\python.exe -m eog_acquisition <command>`
-(add `--port COMx` if not COM7).
-=======
 This creates a separate Python 3.11–3.13 `.venv` (using the first installed compatible version)
 and installs official `chordspy` 0.2.2 (hash-pinned). If none is installed, run `py install 3.11`,
 then rerun setup.
 It is separate from the dashboard's environment. All commands below run from `Code/acquisition`:
 `.venv\Scripts\python.exe -m eog_acquisition <command>` (add `--port COMx` if not COM7).
->>>>>>> d257b1c3ef4240ca849052b9a83073c45b452250
 
 ## 5. Use it with the dashboard
 
@@ -103,7 +108,7 @@ It is separate from the dashboard's environment. All commands below run from `Co
 - **Eyes:** after a 3 s warm-up, each look to either side, held until the plot flashes **CYCLE**,
   moves the highlight one option (`PREVIOUS`, i.e. to the left; `--command NEXT` for the other way).
 - **Joystick:** a press selects. Each push moves the highlight (left/up → PREVIOUS, right/down →
-  NEXT), registered within ~8 ms of the stick leaving its resting range. One push is one command,
+  NEXT). One push is one command,
   even if held. Calibrate the module once (below) so left really is left. `--no-joystick` ignores it.
 
 **Joystick calibration (once per module, 30 s):**
@@ -161,7 +166,10 @@ stays there for `hold` seconds. After that it waits for the return to centre and
 it listens again. Nothing counts during the 3 s warm-up, across a data gap, or while the ADC is
 saturated (hard blinks, a loose electrode). After saturation the inversion restarts cleanly.
 
-Team model (`models/cycle-default.json`): calibrated on `calibration-20261112-125337`: Pill
+Historical unverified team model (`models/cycle-default.json`): its source CSV is absent
+from GitHub, so the following reported results cannot currently be reproduced. Its overall
+training precision is 76.2%, recall 80%, natural false events 3.5/minute; these do not
+meet the new independent approval requirements. It cites `calibration-20261112-125337`: Pill
 time constant 0.15 s, threshold 1,932 counts, hold 1.1 s.
 
 | Recording (2026-11-11/12) | Result |
@@ -217,8 +225,8 @@ Covered:
   blinks, glances, saturation, warm-up, gaps or no signal.
 - Calibration finding the Pill time constant and precise settings, without changing raw files.
 - The joystick: calibration learning each direction of an off-centre, noisy module (and flagging
-  directions it cannot produce), pushes firing within 8 ms of the trigger in the right direction,
-  standard joysticks at 5V and 3V3 without a profile, a debounced SELECT, and nothing when no
+  directions it cannot produce), pushes firing once per neutral-return cycle,
+  standard 3V3 joysticks without a profile, a debounced SELECT, and nothing when no
   joystick is connected.
 - `DashboardLink` against the real backend app over HTTP: each eye CYCLE and joystick command
   reaches the patient screen as one command with the right source, a bad token is not retried, and

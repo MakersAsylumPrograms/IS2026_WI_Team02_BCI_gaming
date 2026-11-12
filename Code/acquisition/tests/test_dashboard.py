@@ -127,7 +127,8 @@ def test_credentials_come_from_the_environment_first(monkeypatch, tmp_path):
         dashboard.device_credentials(tmp_path / 'missing.json')
 
 
-def test_cli_joystick_and_run_reach_the_dashboard_check(capsys):
+def test_cli_joystick_and_run_reach_the_dashboard_check(capsys, monkeypatch):
+    monkeypatch.setenv('EQUALCARE_DEVICE_TOKEN', 'test-token')
     from eog_acquisition.cli import main
     # No backend at this address: both must stop cleanly at the reachability check (no device needed).
     assert main(['joystick', '--dashboard', '--server', 'http://127.0.0.1:9']) == 1

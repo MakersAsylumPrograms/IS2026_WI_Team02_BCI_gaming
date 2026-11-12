@@ -130,3 +130,33 @@ def test_model_round_trip_and_old_models_are_refused(tmp_path):
 def test_team_default_model_loads():
     model = load_model(DEFAULT_MODEL)
     assert 0.05 <= model.tau <= 0.25 and model.threshold > 0 and model.hold > 0
+
+
+def test_return_to_centre_cannot_be_scored_as_intended_look():
+    from eog_acquisition.cycle import CycleEvent
+    recording = recording_from(np.full(5 * FS, 2000))
+    recording.label[:] = ['LEFT'] * (2 * FS) + ['CENTER'] * (3 * FS)
+    recording.trial[:] = 1
+    event = CycleEvent('CYCLE', 3 * FS, 2 * FS + 1, 0, 1, 2000)
+    metrics = score(recording, [event])
+    assert metrics['hits'] == 0 and metrics['false_during_protocol'] == 1
+
+
+def test_approval_requires_independent_data_and_current_parameters(monkeypatch):
+    from dataclasses import replace
+    import eog_acquisition.cycle as cycle
+    training = recording_from(np.full(5 * FS, 2000))
+    evaluation = recording_from(np.full(5 * FS, 2010))
+    model = replace(PILL, calibration_ids=(cycle.recording_id(training),))
+    metrics = dict(trials=40, hits=40, false_during_protocol=0, natural_events=0,
+                   natural_seconds=120)
+    monkeypatch.setattr(cycle, 'detect', lambda *args: [])
+    monkeypatch.setattr(cycle, 'score', lambda *args: metrics)
+    assert not cycle.evaluate_model(training, model)['passed']
+    report = cycle.evaluate_model(evaluation, model)
+    assert report['passed']
+    approved = replace(model, validation=report)
+    assert cycle.dashboard_approved(approved)
+    assert not cycle.dashboard_approved(replace(approved, threshold=approved.threshold + 1))
+    metrics['natural_events'] = 3
+    assert not cycle.evaluate_model(evaluation, model)['passed']

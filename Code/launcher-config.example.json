@@ -1,0 +1,7 @@
+{
+  "port": "COM7",
+  "server": "http://127.0.0.1:8000",
+  "model": "Code/acquisition/models/cycle-default.json",
+  "plot": true,
+  "open_browser": true
+}

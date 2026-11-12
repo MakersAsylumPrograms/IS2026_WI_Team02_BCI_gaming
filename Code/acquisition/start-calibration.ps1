@@ -13,7 +13,20 @@ if ($LASTEXITCODE -ne 0) { throw 'Session incomplete. Recording kept; calibratio
 & $python -m eog_acquisition calibrate $calibration --out $model
 if ($LASTEXITCODE -ne 0) { throw 'Calibration failed. Recording kept; review the message above.' }
 Write-Host "Model saved: $model"
-$answer = Read-Host 'Type RUN to drive the dashboard with this model (backend running, patient signed in), or press Enter to stop'
+$evaluation = "data/recordings/evaluation-$sessionId.csv"
+Write-Host 'Take a five-minute break, keeping electrodes in place.'
+$answer = Read-Host 'Type EVALUATE for a separate evaluation recording, or press Enter to finish'
+if ($answer -ne 'EVALUATE') { return }
+& $python -m eog_acquisition session --set evaluation --in-plus left --port COM7 --plot --out $evaluation
+if ($LASTEXITCODE -ne 0) { throw 'Evaluation incomplete. Recording kept; model remains unapproved.' }
+& $python -m eog_acquisition evaluate $evaluation --model $model --apply
+if ($LASTEXITCODE -ne 0) { throw 'Evaluation failed. Review the output above.' }
+$configPath = Join-Path $PSScriptRoot '../launcher-config.json'
+$config = if (Test-Path $configPath) { Get-Content $configPath -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+$config | Add-Member -NotePropertyName model -NotePropertyValue "Code/acquisition/$model" -Force
+$config | ConvertTo-Json | Set-Content $configPath -Encoding UTF8
+Write-Host 'Model selected for the one-click launcher. EOG still requires passing evaluation.'
+$answer = Read-Host 'Type RUN for the dashboard (unapproved EOG stays disabled), or press Enter to stop'
 if ($answer -eq 'RUN') {
     & $python -m eog_acquisition run --model $model --dashboard --plot --port COM7
 }

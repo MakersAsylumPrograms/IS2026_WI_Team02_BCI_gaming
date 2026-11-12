@@ -153,6 +153,8 @@ class Pipeline:
             self.filter.reset()  # never filter or detect across a hole in the data
             if self.detector:
                 self.detector.reset()
+            if self.joystick:
+                self.joystick.reset()
         filtered = self.filter.process(sample.raw)
         clipped = self.health.update(sample)
         ready = self.filter.ready

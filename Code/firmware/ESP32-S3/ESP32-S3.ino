@@ -23,9 +23,9 @@
 //
 // ---------------------------------------------------------------------------
 // Modified 2026-11 by EqualCare (IS2026 WI Team 02) for single-channel EOG
-// with a BioAmp EXG Pill v3 on GPIO 5, plus an analog joystick. Changes from the
+// with a BioAmp EXG Pill v3 on GPIO 1, plus a 3V3-powered analog joystick. Changes from the
 // upstream Chords ESP32-S3 firmware, which remain under the GNU GPL v3 or later:
-//   * Channel 1 = GPIO 5 (EOG). Channels 2-4 = joystick X (GPIO 1), Y (GPIO 2) and
+//   * Channel 1 = GPIO 1 (EOG). Channels 2-4 = joystick X (GPIO 4), Y (GPIO 5) and
 //     button (GPIO 6, sent as 1 = pressed, 0 = released). Slots 5-16 are kept in
 //     the official 36-byte packet so Chords decoders still work, but are always 0
 //     (inactive). Packet layout and byte order are unchanged.
@@ -56,15 +56,15 @@
 //   STATS  -> "STATS missed=<n> dropped=<n>" since the last START
 // Packet (36 bytes, 250 per second while running):
 //   [0]=0xC7 [1]=0x7C [2]=counter (0-255, wraps) [3..34]=16 channels, each a
-//   big-endian uint16 (channel 1 = GPIO 5 EOG raw ADC counts 0-4095; channels 2-4 =
+//   big-endian uint16 (channel 1 = GPIO 1 EOG raw ADC counts 0-4095; channels 2-4 =
 //   joystick X, Y counts 0-4095 and button 0/1; channels 5-16 = 0) [35]=0x01
 // ---------------------------------------------------------------------------
 
 #include <Arduino.h>
 
-constexpr uint8_t EOG_PIN = 5;          // BioAmp EXG Pill OUT -> GPIO 5 (ADC1 channel 4)
-constexpr uint8_t JOY_X_PIN = 1;        // Joystick VRx -> GPIO 1 (ADC1 channel 0)
-constexpr uint8_t JOY_Y_PIN = 2;        // Joystick VRy -> GPIO 2 (ADC1 channel 1)
+constexpr uint8_t EOG_PIN = 1;          // BioAmp EXG Pill OUT -> GPIO 1 (ADC1 channel 0)
+constexpr uint8_t JOY_X_PIN = 4;        // Joystick VRx -> GPIO 4 (ADC1 channel 3), powered at 3V3
+constexpr uint8_t JOY_Y_PIN = 5;        // Joystick VRy -> GPIO 5 (ADC1 channel 4)
 constexpr uint8_t JOY_SW_PIN = 6;       // Joystick SW  -> GPIO 6 (pressed = LOW, internal pull-up)
 constexpr uint8_t NUM_CHANNELS = 16;    // Slots in the official ESP32-S3 Chords packet
 constexpr uint8_t HEADER_LEN = 3;

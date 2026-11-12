@@ -14,14 +14,16 @@ The patient can request Water, Toilet assistance, Adjust position or Call nurse.
 The nurse sees waiting requests, marks them Seen and then Done; the patient
 screen shows progress. Game and OLED features are outside the current scope.
 
-**Start here:** [Setup, passwords and team guide](Code/README.md).
+**Start:** double-click `Start-EqualCare.cmd` on Windows. First setup needs internet and Python 3.11–3.13.
+**Guide:** [Setup, passwords and team guide](Code/README.md).
 **API contract:** [OpenAPI](Documentation/openapi.json).
 
 | Location | Contents |
 | --- | --- |
 | Code/backend/ | Flask + SQLite API, launcher, simulator and tests |
 | Code/frontend/ | Connected patient/staff screens and shared JavaScript/CSS |
-| Code/firmware/ | ESP32 HTTP transport and Serial-input demo |
+| Code/firmware/ | ESP32-S3 EOG and joystick acquisition over USB-UART |
+| Code/acquisition/ | EOG CYCLE detection, joystick fallback, calibration and dashboard bridge |
 | Documentation/ | Original flowchart, hardware block diagram and API contract |
 | Reference_Data/ | ESP32, BioAmp, joystick and OLED supplier datasheets |
 | Electronics/, CAD/, Photos_Videos/ | Placeholders for wiring, mechanical designs and demonstration media |
@@ -29,8 +31,10 @@ screen shows progress. Game and OLED features are outside the current scope.
 The original diagrams differ: the flowchart includes game/OLED behaviour; the
 hardware block diagram describes the patient/staff workflow implemented here.
 The implementation-plan DOCX was supplied outside the repository.
-Firmware currently provides transport only; actual wiring, joystick acquisition
-and EOG classification still require the hardware/firmware team.
+EOG is on GPIO 1; joystick X/Y/switch are GPIO 4/5/6. Both modules use 3V3.
+The bundled EOG model is unverified; dashboard EOG control requires independent
+evaluation approval. Joystick control remains available. Physical validation is
+still required; automated checks do not establish real-person accuracy.
 
 ## Licenses
 

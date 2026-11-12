@@ -52,7 +52,7 @@ class DashboardLink:
         self.say = say
         self.boot_id, self.seq = str(uuid.uuid4()), 0
         self.sent = self.dropped = 0
-        self._queue = queue.Queue()
+        self._queue = queue.Queue(maxsize=32)
         self._stop = threading.Event()
         self._threads = []
 
@@ -76,7 +76,10 @@ class DashboardLink:
 
     def stop(self):
         self._stop.set()
-        self._queue.put(None)
+        try:
+            self._queue.put_nowait(None)
+        except queue.Full:
+            pass
         for thread in self._threads:
             thread.join(timeout=2)
 
@@ -84,7 +87,15 @@ class DashboardLink:
         """Queue one dashboard command for a CycleEvent (eyes) or a JoystickEvent."""
         source = getattr(event, 'source', 'eog')
         command = event.command if source == 'joystick' else self.command
-        self._queue.put((time.monotonic(), command, source))
+        if source not in ('eog', 'joystick') or command not in ('NEXT', 'PREVIOUS', 'SELECT'):
+            raise ValueError('Unsupported dashboard event')
+        if self._stop.is_set():
+            return
+        try:
+            self._queue.put_nowait((time.monotonic(), command, source))
+        except queue.Full:
+            self.dropped += 1
+            self.say('[dashboard] input queue full; command discarded')
 
     def _heartbeat(self):
         warned = False
@@ -99,8 +110,11 @@ class DashboardLink:
             self._stop.wait(HEARTBEAT_EVERY)
 
     def _sender(self):
-        while True:
-            item = self._queue.get()
+        while not self._stop.is_set():
+            try:
+                item = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
             if item is None:
                 return
             queued, command, source = item

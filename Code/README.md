@@ -2,6 +2,15 @@
 
 ## Start and connect
 
+Normal Windows startup: double-click root `Start-EqualCare.cmd`. It starts the backend
+and one combined EOG/joystick acquisition process, then opens the patient page.
+First setup uses isolated venvs and needs internet; unchanged subsequent starts work
+offline. Optional settings are in `Code/launcher-config.json` (copy the example).
+Keep the launcher open; Ctrl+C stops only its child processes. Port 8000 must be free.
+Runtime logs are local under `Code/runtime/`. The bundled EOG model is unverified:
+the dashboard starts with joystick control until a model passes independent evaluation.
+The manual backend-only instructions below remain useful for diagnostics.
+
 Requires Python 3.11+; initial dependency installation needs internet.
 From the repository root in PowerShell:
 
@@ -143,7 +152,7 @@ PENDING means saved by the backend, not that the nurse has seen it.
 | frontend/shared/patient.js | Menu, confirmation, submission, retry and status screens |
 | frontend/shared/staff.js | Request ordering, Seen/Done, waiting timers and sound alerts |
 | frontend/shared/styles.css | Shared and screen-specific styles |
-| firmware/ESP32-S3/ESP32-S3.ino | ESP32-S3: EOG (GPIO 5) + joystick (GPIO 1/2/6) at 250 Hz over USB (Chords packets) |
+| firmware/ESP32-S3/ESP32-S3.ino | ESP32-S3: EOG GPIO 1 + 3V3 joystick GPIO 4/5/6, 250 Hz USB Chords packets |
 | acquisition/ | Laptop side: eye CYCLE detection, joystick, and sending commands to the backend |
 
 Full request/response schemas: [OpenAPI](../Documentation/openapi.json).
@@ -154,12 +163,10 @@ Staff login sends role, login_id and password; patient login sends role and pass
 The shared API client handles these. Device calls use
 `Authorization: Bearer <device-token>`; the device token never belongs in frontend code.
 
-Firmware calls `transport.begin()` once, then
-`transport.emit(CareCommand::Next, CareSource::Joystick)` (or Previous/Select,
-and Eog). Emit once per debounced action from normal task context, not an ISR.
-A false return means discard the action; true means queued, not confirmed delivery.
-The worker uses an eight-event queue, one HTTP operation at a time and a
-two-second freshness window. The firmware team owns GPIOs, acquisition and classification.
+Firmware streams raw Chords packets over USB-UART. The laptop acquisition process
+classifies EOG and joystick input and sends commands through `DashboardLink` with
+one sequence counter. Its bounded queue discards stale commands rather than replaying
+navigation after an outage. The removed firmware HTTP transport API is no longer used.
 
 POST /api/v1/input-events with:
 
@@ -203,7 +210,7 @@ Tests use temporary databases and test credentials. Coverage includes lifecycle,
 retries, persistence, permissions, concurrent sends, expired/duplicate commands,
 confirmation/cancel, offline recovery and device-only navigation.
 
-Device path: BioAmp EXG Pill v3 (GPIO 5) and joystick (GPIO 1/2/6) -> ESP32-S3 running
+Device path: BioAmp EXG Pill v3 (GPIO 1) and joystick (GPIO 4/5/6) -> ESP32-S3 running
 `firmware/ESP32-S3` (Chords protocol, 250 Hz) -> USB-to-UART -> `acquisition/` on the
 patient laptop. A held look to either side is one eye CYCLE (PREVIOUS, source `eog`); joystick
 pushes are NEXT/PREVIOUS and its press is SELECT (source `joystick`). One gesture = one command;

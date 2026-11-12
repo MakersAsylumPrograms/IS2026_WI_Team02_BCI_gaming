@@ -16,8 +16,8 @@ SYNC = bytes((0xC7, 0x7C))
 END_BYTE = 0x01
 HEADER_LEN = 3
 PACKET_LEN = HEADER_LEN + 2 * NUM_SLOTS + 1  # 36
-EOG_SLOT = 0  # channel 1 (EOG, GPIO 5)
-JOYSTICK_SLOTS = slice(1, 4)  # channels 2-4: X (GPIO 1), Y (GPIO 2), button (GPIO 6, 1 = pressed)
+EOG_SLOT = 0  # channel 1 (EOG, GPIO 1)
+JOYSTICK_SLOTS = slice(1, 4)  # channels 2-4: X (GPIO 4), Y (GPIO 5), button (GPIO 6, 1 = pressed)
 FIRST_INACTIVE_SLOT = 4       # channels 5-16 are always 0
 COUNTER_MODULO = 256
 

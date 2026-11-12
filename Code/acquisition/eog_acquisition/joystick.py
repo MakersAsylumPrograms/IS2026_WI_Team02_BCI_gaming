@@ -1,24 +1,11 @@
-"""Joystick (channels 2-4 of each packet) -> dashboard commands, with no delay.
+"""3V3 PS2 fallback: GPIO4=X, GPIO5=Y, GPIO6=SW (active LOW in firmware).
 
-Wiring: VRx -> GPIO 1, VRy -> GPIO 2, SW -> GPIO 6 (internal pull-up), GND -> GND, VCC -> 5V or 3V3.
-The firmware sends X and Y as 0-4095 and the button as 1 (pressed) / 0, 250 times a second.
-
-Button: SELECT on the press, after 20 ms of stable contact (works without any calibration).
-
-Directions, two ways:
-* Calibrated profile (models/joystick.json, made by `python -m eog_acquisition joystick-calibrate`):
-  the module's own readings at rest and for each push. Each direction gets a trigger just outside
-  the resting noise on the axis it really moves, so a push registers within 8 ms of leaving the
-  rest range and LEFT is always LEFT, whatever the wiring or mounting. Needed for modules that rest
-  off-centre or noisily (the team's module rests at x~540, y~90 and wanders by several hundred).
-* Without a profile, a standard joystick is handled automatically: the centre is measured while the
-  stick is still, and a push is half the travel on that side (at least 600 counts).
-
-One push = one command; the stick must come back to rest before the next push counts.
-LEFT/UP -> PREVIOUS, RIGHT/DOWN -> NEXT (`invert` swaps them).
+One tilt emits once until stable neutral. One debounced press emits SELECT.
+This module never suppresses EOG. Invalid calibration is rejected rather than
+trying to compensate for unpowered, shorted or excessively noisy hardware.
 """
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -27,82 +14,64 @@ from .protocol import ADC_MAX, SAMPLE_RATE
 
 DEFAULT_PROFILE = Path(__file__).resolve().parents[1] / 'models' / 'joystick.json'
 DIRECTIONS = ('LEFT', 'RIGHT', 'UP', 'DOWN')
-COMMANDS = {'LEFT': 'PREVIOUS', 'UP': 'PREVIOUS', 'RIGHT': 'NEXT', 'DOWN': 'NEXT'}
-DEBOUNCE_SAMPLES = 5        # button: 20 ms at 250 Hz
-HOLD_SAMPLES = 2            # direction: 8 ms past the trigger, so a single noise spike never counts
-TRIGGER_SHARE = 0.25        # profile: trigger this far from the rest edge towards the push level
-MIN_MARGIN = 200            # profile: a push must clear the rest noise by at least this (counts)
-# automatic (no profile) standard joystick
-PUSH, RELEASE, MIN_PUSH_COUNTS = 0.5, 0.3, 600
-STILL_SECONDS, STILL_RANGE, RAIL_MARGIN = 0.5, 200, 20
-AXES = {('x', -1): 'LEFT', ('x', 1): 'RIGHT', ('y', -1): 'UP', ('y', 1): 'DOWN'}
+COMMANDS = dict(LEFT='PREVIOUS', UP='PREVIOUS', RIGHT='NEXT', DOWN='NEXT')
+FORMAT = 'equalcare-joystick/2'
 
 
 @dataclass(frozen=True)
 class JoystickEvent:
-    command: str        # NEXT / PREVIOUS / SELECT
-    direction: str      # LEFT / RIGHT / UP / DOWN / PRESS
+    command: str
+    direction: str
     index: int
     host_time: float
     source: str = 'joystick'
 
 
-@dataclass(frozen=True)
-class Rule:
-    """One direction: axis 0 (x) or 1 (y) moves with `sign`; fires past `trigger`, re-arms inside `release`."""
-    axis: int
-    sign: int
-    trigger: float
-    release: float
-    push: float          # typical reading while held (for choosing between directions)
+def _validate(profile):
+    if profile.get('format') != FORMAT:
+        raise ValueError('Old joystick profile: repeat joystick-calibrate with 3V3 wiring.')
+    centre = np.asarray(profile.get('centre'), dtype=float)
+    if centre.shape != (2,) or not np.isfinite(centre).all() or not ((centre > 100) & (centre < ADC_MAX - 100)).all():
+        raise ValueError('Invalid joystick centre.')
+    rules = profile.get('rules', {})
+    if set(rules) != set(DIRECTIONS):
+        raise ValueError('All four joystick directions must be distinguishable.')
+    seen = set()
+    for rule in rules.values():
+        axis, sign, travel = rule['axis'], rule['sign'], rule['travel']
+        if axis not in (0, 1) or sign not in (-1, 1) or not 600 <= travel <= ADC_MAX:
+            raise ValueError('Invalid joystick travel or direction.')
+        if (axis, sign) in seen:
+            raise ValueError('Joystick directions overlap; check wiring.')
+        seen.add((axis, sign))
+    return profile
 
 
 def build_profile(rows):
-    """rows: [(label, x, y)] from the guided calibration (labels REST / LEFT / RIGHT / UP / DOWN).
-    Returns (profile dict, report lines)."""
-    by = {}
-    for label, x, y in rows:
-        by.setdefault(label, []).append((x, y))
-    if len(by.get('REST', [])) < SAMPLE_RATE:
-        raise ValueError('Not enough resting data: keep the stick untouched during REST.')
-    rest = np.array(by['REST'], dtype=float)
-    low, mid, high = np.percentile(rest, 1, 0), np.median(rest, 0), np.percentile(rest, 99, 0)
+    groups = {label: np.asarray([(x, y) for tag, x, y in rows if tag == label], dtype=float)
+              for label in ('REST', *DIRECTIONS)}
+    if any(len(v) < SAMPLE_RATE // 2 for v in groups.values()):
+        raise ValueError('Record REST and all four directions before calibration.')
+    if any(not np.isfinite(v).all() or v.min() < 0 or v.max() > ADC_MAX for v in groups.values()):
+        raise ValueError('Joystick readings outside the ADC range.')
+    centre = np.median(groups['REST'], axis=0)
+    noise = np.percentile(groups['REST'], 95, axis=0) - np.percentile(groups['REST'], 5, axis=0)
+    if (noise > 200).any():
+        raise ValueError('Joystick rest is too noisy. Check 3V3 power, ground and wiring.')
     rules, report = {}, []
     for direction in DIRECTIONS:
-        pushed = np.array(by.get(direction, []), dtype=float)
-        if len(pushed) < SAMPLE_RATE // 2:
-            report.append(f'{direction:5}: no data')
-            continue
-        level = np.median(pushed, 0)
-        best = None
-        for axis in (0, 1):
-            sign = 1 if level[axis] > mid[axis] else -1
-            edge = high[axis] if sign > 0 else low[axis]
-            margin = (level[axis] - edge) * sign             # how far the push clears the rest noise
-            if margin >= MIN_MARGIN and (best is None or margin > best[0]):
-                best = (margin, axis, sign, edge)
-        if best is None:
-            report.append(f'{direction:5}: NOT detectable (the readings stay inside the resting noise)')
-            continue
-        margin, axis, sign, edge = best
-        rules[direction] = Rule(axis, sign, round(edge + sign * TRIGGER_SHARE * margin, 1), round(edge, 1),
-                                round(float(level[axis]), 1))
-        report.append(f'{direction:5}: {"xy"[axis]} {"rises" if sign > 0 else "falls"} to ~{level[axis]:.0f} '
-                      f'(rest {low[axis]:.0f}-{high[axis]:.0f}); triggers at {rules[direction].trigger:.0f}')
-    # Two directions on the same axis and side cannot be told apart: keep the stronger one.
-    for a in list(rules):
-        for b in list(rules):
-            if a < b and a in rules and b in rules and (rules[a].axis, rules[a].sign) == (rules[b].axis, rules[b].sign):
-                weaker = a if abs(rules[a].push - rules[a].release) < abs(rules[b].push - rules[b].release) else b
-                report.append(f'{weaker:5}: dropped, it moves the same axis the same way as '
-                              f'{b if weaker == a else a}')
-                del rules[weaker]
-    profile = dict(format='equalcare-joystick/1', rest=dict(low=low.tolist(), median=mid.tolist(), high=high.tolist()),
-                   rules={d: asdict(r) for d, r in rules.items()})
-    return profile, report
+        delta = np.median(groups[direction], axis=0) - centre
+        axis = int(np.argmax(np.abs(delta)))
+        travel = float(abs(delta[axis]))
+        if travel < max(600, 4 * noise[axis]):
+            raise ValueError(f'{direction} has insufficient travel; check wiring.')
+        rules[direction] = dict(axis=axis, sign=1 if delta[axis] > 0 else -1, travel=travel)
+        report.append(f'{direction}: axis {axis}, travel {travel:.0f} counts')
+    return _validate(dict(format=FORMAT, centre=centre.tolist(), rules=rules)), report
 
 
 def save_profile(profile, path=DEFAULT_PROFILE):
+    _validate(profile)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(profile, indent=2), encoding='utf-8')
@@ -110,109 +79,82 @@ def save_profile(profile, path=DEFAULT_PROFILE):
 
 
 def load_profile(path=DEFAULT_PROFILE):
-    """The saved profile, or None if there is none."""
     path = Path(path)
-    if not path.exists():
-        return None
-    data = json.loads(path.read_text(encoding='utf-8'))
-    if data.get('format') != 'equalcare-joystick/1':
-        raise ValueError(f'{path} is not a joystick profile')
-    return data
+    return _validate(json.loads(path.read_text(encoding='utf-8'))) if path.exists() else None
 
 
 class JoystickReader:
     def __init__(self, sample_rate=SAMPLE_RATE, invert=False, profile=None):
         self.invert = invert
-        self.rules = {d: Rule(**r) for d, r in (profile or {}).get('rules', {}).items()}
-        self._still = int(STILL_SECONDS * sample_rate)
+        self.profile = _validate(profile) if profile else None
+        self.centre = tuple(profile['centre']) if profile else None
+        self.rules = profile['rules'] if profile else {}
+        self._still = max(1, round(0.5 * sample_rate))
+        self._debounce = max(1, round(0.02 * sample_rate))
         self.reset()
-
-    def reset(self):
-        self.mode = 'profile' if self.rules else None   # None until a standard joystick's centre is measured
-        self.centre = None
-        self.direction = None
-        self._window = []
-        self._run = 0
-        self._pressed = False
-        self._button_run = 0
 
     @property
     def ready(self):
-        return self.mode is not None
+        return self.centre is not None
+
+    def reset(self):
+        # Retain a known centre, but require neutral/release after a gap.
+        self.mode = 'profile' if self.profile else ('centre' if self.centre else None)
+        self.direction = None
+        self._window = []
+        self._armed = self._button_ready = self._pressed = False
+        self._neutral_run = self._direction_run = self._button_run = 0
+        self._candidate = self._last_index = None
 
     def _command(self, direction):
         command = COMMANDS[direction]
-        if self.invert:
-            command = 'NEXT' if command == 'PREVIOUS' else 'PREVIOUS'
-        return command
+        return ('NEXT' if command == 'PREVIOUS' else 'PREVIOUS') if self.invert else command
 
     def update(self, sample):
-        """Feed a protocol.Sample; returns a list of JoystickEvents (usually empty)."""
         if sample.joystick is None:
+            self.reset()
             return []
+        if sample.gap_before or sample.stall or (self._last_index is not None and sample.index != self._last_index + 1):
+            self.reset()
+        self._last_index = sample.index
         x, y, button = sample.joystick
+        if not (0 <= x <= ADC_MAX and 0 <= y <= ADC_MAX and button in (0, 1)):
+            self.reset()
+            return []
         events = []
         pressed = bool(button)
-        self._button_run = self._button_run + 1 if pressed != self._pressed else 0
-        if self._button_run >= DEBOUNCE_SAMPLES:
-            self._pressed, self._button_run = pressed, 0
-            if pressed:
-                events.append(JoystickEvent('SELECT', 'PRESS', sample.index, sample.host_time))
-
-        if self.mode == 'profile':
-            direction = self._profile_step((x, y))
-        elif self.mode == 'centre':
-            direction = self._centre_step(x, y)
+        if not self._button_ready:
+            self._button_run = self._button_run + 1 if not pressed else 0
+            if self._button_run >= self._debounce:
+                self._button_ready, self._button_run = True, 0
         else:
-            self._measure_centre(x, y)
-            direction = None
-        if direction:
-            events.append(JoystickEvent(self._command(direction), direction, sample.index, sample.host_time))
+            self._button_run = self._button_run + 1 if pressed != self._pressed else 0
+            if self._button_run >= self._debounce:
+                self._pressed, self._button_run = pressed, 0
+                if pressed:
+                    events.append(JoystickEvent('SELECT', 'PRESS', sample.index, sample.host_time))
+        if self.centre is None:
+            self._window.append((x, y))
+            if len(self._window) >= self._still:
+                values, self._window = np.asarray(self._window), []
+                centre = np.median(values, axis=0)
+                if (np.ptp(values, axis=0) <= 200).all() and ((centre > ADC_MAX * 0.2) & (centre < ADC_MAX * 0.8)).all():
+                    self.centre, self.mode = tuple(centre), 'centre'
+            return events
+        delta = np.asarray((x, y)) - self.centre
+        if self.rules:
+            shares = {d: delta[r['axis']] * r['sign'] / r['travel'] for d, r in self.rules.items()}
+        else:
+            shares = {d: delta[a] * sign / max(600, (ADC_MAX - self.centre[a]) if sign > 0 else self.centre[a])
+                      for d, a, sign in [('LEFT', 0, -1), ('RIGHT', 0, 1), ('UP', 1, -1), ('DOWN', 1, 1)]}
+        self._neutral_run = self._neutral_run + 1 if max(shares.values()) < 0.25 else 0
+        if self._neutral_run >= self._debounce:
+            self._armed, self.direction = True, None
+        candidate = max(shares, key=shares.get)
+        candidate = candidate if shares[candidate] >= 0.5 else None
+        self._direction_run = self._direction_run + 1 if candidate == self._candidate else 1
+        self._candidate = candidate
+        if self._armed and candidate and self._direction_run >= self._debounce:
+            self._armed, self.direction = False, candidate
+            events.append(JoystickEvent(self._command(candidate), candidate, sample.index, sample.host_time))
         return events
-
-    # ---- calibrated profile ----------------------------------------------------------------
-    def _profile_step(self, values):
-        if self.direction is not None:
-            rule = self.rules[self.direction]
-            if (values[rule.axis] - rule.release) * rule.sign < 0:
-                self.direction = None                     # back at rest: the next push may count
-            return None
-        crossed = [((values[r.axis] - r.release) / max(1.0, abs(r.push - r.release)), d)
-                   for d, r in self.rules.items() if (values[r.axis] - r.trigger) * r.sign >= 0]
-        self._run = self._run + 1 if crossed else 0
-        if self._run < HOLD_SAMPLES:
-            return None
-        self._run = 0
-        self.direction = max(crossed)[1]                  # the axis furthest along wins (cross-talk)
-        return self.direction
-
-    # ---- standard joystick, no profile -------------------------------------------------------
-    def _measure_centre(self, x, y):
-        self._window.append((x, y))
-        if len(self._window) < self._still:
-            return
-        values = np.array(self._window)
-        self._window = []
-        spread = np.percentile(values, 95, axis=0) - np.percentile(values, 5, axis=0)
-        centre = np.median(values, 0)
-        if (spread <= STILL_RANGE).all() and ((centre > RAIL_MARGIN) & (centre < ADC_MAX - RAIL_MARGIN)).all():
-            self.centre, self.mode = (float(centre[0]), float(centre[1])), 'centre'
-
-    def _centre_step(self, x, y):
-        moved = []
-        for axis, value, centre in (('x', x, self.centre[0]), ('y', y, self.centre[1])):
-            delta = value - centre
-            share = delta / max(1.0, (ADC_MAX - centre) if delta >= 0 else centre)
-            moved.append((axis, delta, share))
-        if self.direction is not None:
-            if not any(abs(d) >= 0.5 * MIN_PUSH_COUNTS and abs(s) >= RELEASE for _, d, s in moved):
-                self.direction = None
-            return None
-        pushed = [(abs(s), axis, d) for axis, d, s in moved if abs(d) >= MIN_PUSH_COUNTS and abs(s) >= PUSH]
-        self._run = self._run + 1 if pushed else 0
-        if self._run < HOLD_SAMPLES:
-            return None
-        self._run = 0
-        _, axis, delta = max(pushed)
-        self.direction = AXES[(axis, 1 if delta > 0 else -1)]
-        return self.direction

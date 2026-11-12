@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .cycle import (DEFAULT_MODEL, MIN_RECALL, CalibrationError, CycleDetector, calibrate, detect, load_model,
-                    save_model, score)
+                    save_model, score, evaluate_model, dashboard_approved)
 from .dashboard import COMMANDS, DEFAULT_SERVER, DashboardLink
 from .joystick import DEFAULT_PROFILE, DIRECTIONS, JoystickReader, build_profile, load_profile, save_profile
 from .device import DEFAULT_PORT, DeviceError, EOGDevice
@@ -275,6 +275,14 @@ def cmd_evaluate(args):
         recording = load_recording(path)
         events = detect(recording, model)
         s = score(recording, events)
+        validation = evaluate_model(recording, model)
+        report_path = Path(args.model).with_suffix('.evaluation.json')
+        save_json(report_path, validation)
+        print(f"Evaluation approved: {validation['passed']}; independent: {validation['independent']}; report: {report_path}")
+        if args.apply:
+            data = json.loads(Path(args.model).read_text(encoding='utf-8'))
+            data['validation'] = validation
+            save_json(args.model, data)
         if s['trials']:
             print_score(Path(path).stem, s)
         else:
@@ -286,10 +294,10 @@ def cmd_evaluate(args):
 
 def connect_dashboard(args):
     """DashboardLink after a successful heartbeat, or None (message printed)."""
-    link = DashboardLink(args.server, command=getattr(args, 'command', 'PREVIOUS'))  # eye command; joystick sends its own
     try:
+        link = DashboardLink(args.server, command=getattr(args, 'command', 'PREVIOUS'))
         link.check()
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         print(f'Dashboard backend at {args.server} is not reachable ({exc}). Start it with '
               f'Code/backend/start.ps1, sign in on the patient screen, then run this again.')
         return None
@@ -316,6 +324,13 @@ def cmd_run(args):
     print(f'Eyes: CYCLE = look to EITHER side over {model.threshold} counts and hold {model.hold} s '
           f'(the look back to centre does not count) -> {args.command}.')
     joystick = None if args.no_joystick else make_joystick(args)
+    detector = CycleDetector(model)
+    if args.dashboard and not dashboard_approved(model):
+        if joystick is None:
+            print('EOG model is not approved on independent evaluation. Evaluate with --apply first.')
+            return 1
+        print('EOG model is unverified: dashboard runs JOYSTICK ONLY. EOG preview/calibration remains available.')
+        detector = None
     link = None
     if args.dashboard:
         link = connect_dashboard(args)
@@ -323,7 +338,7 @@ def cmd_run(args):
             return 1
     log = EventLog(args.events or DATA / 'events' / f'events-{stamp()}.csv')
     recorder = Recorder(args.record, port=args.port, in_plus=args.in_plus, notes='live run') if args.record else None
-    pipeline = Pipeline(detector=CycleDetector(model), recorder=recorder, joystick=joystick)
+    pipeline = Pipeline(detector=detector, recorder=recorder, joystick=joystick)
     count = [0]
 
     def on_event(event):
@@ -506,6 +521,7 @@ def main(argv=None):
     p = sub.add_parser('evaluate', help=cmd_evaluate.__doc__)
     p.add_argument('recordings', nargs='+')
     p.add_argument('--model', default=str(DEFAULT_MODEL))
+    p.add_argument('--apply', action='store_true', help='persist independent evaluation approval in the model')
     p.set_defaults(func=cmd_evaluate)
 
     p = sub.add_parser('run', help=cmd_run.__doc__)
@@ -546,6 +562,9 @@ def main(argv=None):
         return args.func(args)
     except DeviceError as exc:
         print(f'Device error: {exc}')
+        return 2
+    except (ValueError, OSError, RuntimeError) as exc:
+        print(f'Setup/input error: {exc}')
         return 2
 
 
