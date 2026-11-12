@@ -303,10 +303,14 @@ def _plateau_slopes(recording, model):
         if label not in MOVES or i < fs:
             continue
         before = float(np.median(x[i - int(0.5 * fs):i]))
-        window = x[i:i + 2 * fs] - before
-        if (len(window) < 2 * fs or flags[i:i + 2 * fs].any()
-                or np.any(recording.gap_before[max(0, i - fs):i + 2 * fs])
-                or np.any(recording.stall[max(0, i - fs):i + 2 * fs])):
+        end = i
+        while (end < len(x) and recording.label[end] == label
+               and recording.trial[end] == recording.trial[i]):
+            end += 1
+        window = x[i:end] - before
+        if (len(window) < fs or flags[i:end].any()
+                or np.any(recording.gap_before[max(0, i - fs):end])
+                or np.any(recording.stall[max(0, i - fs):end])):
             continue
         peak = np.max(np.abs(window))
         start = int(np.argmax(np.abs(window) > 0.5 * peak))

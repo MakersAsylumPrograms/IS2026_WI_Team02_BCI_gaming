@@ -134,3 +134,76 @@ def test_cli_joystick_and_run_reach_the_dashboard_check(capsys, monkeypatch):
     assert main(['joystick', '--dashboard', '--server', 'http://127.0.0.1:9']) == 1
     assert main(['run', '--dashboard', '--server', 'http://127.0.0.1:9', '--command', 'NEXT']) == 1
     assert capsys.readouterr().out.count('is not reachable') == 2
+
+
+@pytest.mark.parametrize('approved', [False, True])
+def test_live_preview_forwards_only_approved_eog(monkeypatch, tmp_path, approved):
+    from types import SimpleNamespace
+    from eog_acquisition import cli
+    from eog_acquisition.cycle import CycleModel
+    callbacks, delivered = [], []
+    link = SimpleNamespace(send=delivered.append, stop=lambda: None, sent=0, dropped=0)
+    class Pipeline:
+        def __init__(self, **kwargs):
+            assert kwargs['detector'] is not None  # preview remains live
+            self.health = SimpleNamespace(snapshot=lambda: {})
+        def on_event(self, callback):
+            callbacks.append(callback)
+        def on_sample(self, callback):
+            pass
+    class Live:
+        def __init__(self, port, pipeline):
+            self.device = SimpleNamespace(decoder=None)
+        def start(self):
+            pass
+        def wait(self):
+            for source, command in [('eog', 'CYCLE'), ('joystick', 'SELECT')]:
+                callbacks[0](SimpleNamespace(source=source, command=command, index=1,
+                    host_time=1.0, direction='PRESS', shift=100))
+        def finish(self):
+            return ''
+    monkeypatch.setattr(cli, 'load_model', lambda _: CycleModel())
+    monkeypatch.setattr(cli, 'dashboard_approved', lambda _: approved)
+    monkeypatch.setattr(cli, 'make_joystick', lambda _: object())
+    monkeypatch.setattr(cli, 'connect_dashboard', lambda _: link)
+    monkeypatch.setattr(cli, 'Pipeline', Pipeline)
+    monkeypatch.setattr(cli, 'Live', Live)
+    monkeypatch.setattr(cli, 'summarise', lambda *args: None)
+    assert cli.main(['run', '--dashboard', '--events', str(tmp_path / 'events.csv')]) == 0
+    assert [e.source for e in delivered] == (['eog', 'joystick'] if approved else ['joystick'])
+
+
+def test_bridge_delivers_mixed_inputs_to_real_patient_api(tmp_path):
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+    from threading import Thread
+    from werkzeug.serving import make_server
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'backend'))
+    from app import create_app
+    app = create_app(dict(TESTING=True, DATABASE=str(tmp_path / 'requests.sqlite3'),
+        PATIENT_PASSWORD='patient-test', STAFF_PASSWORD='staff-test', DEVICE_TOKEN='device-test',
+        SECRET_KEY='test-secret'))
+    patient = app.test_client()
+    assert patient.post('/api/v1/session', json={'role': 'patient', 'password': 'patient-test'},
+        headers={'X-EqualCare-Client': 'dashboard'}).status_code == 200
+    headers = {'X-Consumer-ID': 'bridge-test'}
+    initial = patient.get('/api/v1/input-events', headers=headers).json
+    server = make_server('127.0.0.1', 0, app)
+    worker = Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    link = DashboardLink(f'http://127.0.0.1:{server.server_port}',
+        device_id='esp32-01', token='device-test').start()
+    try:
+        link.send(SimpleNamespace(source='eog'))
+        link.send(SimpleNamespace(source='joystick', command='SELECT'))
+        assert wait_for(lambda: link.sent == 2)
+        response = patient.get('/api/v1/input-events', query_string={
+            'after': initial['cursor'], 'epoch': initial['epoch']}, headers=headers)
+        assert response.status_code == 200
+        assert [event['command'] for event in response.json['events']] == ['PREVIOUS', 'SELECT']
+    finally:
+        link.stop()
+        server.shutdown()
+        worker.join(timeout=2)
+        server.server_close()

@@ -1,5 +1,16 @@
 # EOG + joystick input for the dashboard
 
+Latest audit: the complete `calibration-20261112-170710-083.csv` was used as the
+primary recording. It cannot provide a clean calibration: 34/40 movement windows
+touch the ADC rails and only two clean plateaus fit the old two-second cue windows.
+See `hardware-tests/2026-11-12-final/` for the full inventory and report.
+
+New guided side holds last 3.5 seconds, and fitting uses the actual labelled hold
+duration. Use comfortable looks and check the raw plot before recording; repeated
+0/4095 values require correcting signal range/contact/gain. A separate clean
+evaluation is required for dashboard EOG control. Unapproved detectors remain
+visible in the plot and log preview events without forwarding them.
+
 **BioAmp EXG Pill v3 (GPIO 1) + joystick (GPIO 4/5/6) → ESP32-S3 → USB-to-UART (COM7) → official Chords Python → dashboard**
 
 Normal startup: double-click root `Start-EqualCare.cmd`. Both inputs stay active with

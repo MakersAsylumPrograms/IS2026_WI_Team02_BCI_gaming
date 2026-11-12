@@ -39,7 +39,7 @@ class Recorder:
         self.meta_path = self.path.with_suffix('.json')
         self.meta = dict(format=FORMAT, board=BOARD_ID, port=port, sample_rate=SAMPLE_RATE,
                          adc_bits=RESOLUTION_BITS, units='raw ADC counts (uncalibrated; not microvolts)',
-                         channel='1 (GPIO 5, BioAmp EXG Pill v3, horizontal EOG)',
+                         channel='1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)',
                          in_plus_electrode=in_plus, started_utc=utc_now(), chordspy=chordspy_version(),
                          notes=notes, protocol=protocol or {})
         if self.meta_path.exists():

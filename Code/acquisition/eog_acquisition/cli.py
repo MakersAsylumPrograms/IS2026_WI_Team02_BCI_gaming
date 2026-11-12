@@ -332,12 +332,13 @@ def cmd_run(args):
           f'(the look back to centre does not count) -> {args.command}.')
     joystick = None if args.no_joystick else make_joystick(args)
     detector = CycleDetector(model)
+    eog_approved = dashboard_approved(model)
     if args.dashboard and not dashboard_approved(model):
         if joystick is None:
             print('EOG model is not approved on independent evaluation. Evaluate with --apply first.')
             return 1
-        print('EOG model is unverified: dashboard runs JOYSTICK ONLY. EOG preview/calibration remains available.')
-        detector = None
+        print('EOG model is unverified: dashboard runs JOYSTICK ONLY. EOG detector stays active for preview; '
+              'candidate eye events are logged but not sent.')
     link = None
     if args.dashboard:
         link = connect_dashboard(args)
@@ -350,12 +351,12 @@ def cmd_run(args):
 
     def on_event(event):
         log.write(event)
-        if link:
+        if link and (event.source == 'joystick' or eog_approved):
             link.send(event)
         if event.source == 'eog':
             count[0] += 1
             print(f'  EYES      CYCLE #{count[0]}  (shift {event.shift:+.0f} counts)'
-                  + (f'  -> {args.command}' if link else ''), flush=True)
+                  + (f'  -> {args.command}' if link and eog_approved else '  [PREVIEW: not sent]'), flush=True)
         else:
             print(f'  JOYSTICK  {event.direction:5}  -> {event.command}' + ('' if link else '  (not sent)'),
                   flush=True)

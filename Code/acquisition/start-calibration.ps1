@@ -7,6 +7,8 @@ $calibration = "data/recordings/calibration-$sessionId.csv"
 $model = "data/models/cycle-$sessionId.json"
 
 Write-Host 'Do each command as soon as it appears. LEFT/RIGHT: move only your eyes and HOLD until CENTRE.'
+Write-Host 'Use comfortable side looks, not extreme looks or hard squeezes. Side holds last 3.5 seconds.'
+Write-Host 'Check the raw plot first: if it hits 0/4095, correct the signal before recording.'
 Write-Host 'Ctrl+C saves a partial recording. A partial session will not be calibrated.'
 & $python -m eog_acquisition session --set calibration --in-plus left --port COM7 --plot --out $calibration
 if ($LASTEXITCODE -ne 0) { throw 'Session incomplete. Recording kept; calibration skipped.' }

@@ -62,7 +62,7 @@ class Protocol:
     neutral_seconds: float = 30.0
     trials_per_gesture: int = 20
     gestures: tuple = GESTURES
-    hold_seconds: float = 2.0
+    hold_seconds: float = 3.5
     center_seconds: float = 2.0
     blink_seconds: float = 2.0
     rest_seconds: float = 1.5

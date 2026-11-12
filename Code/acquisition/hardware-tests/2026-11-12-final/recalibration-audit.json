@@ -1,0 +1,805 @@
+{
+  "format": "equalcare-recalibration-audit/1",
+  "inventory": [
+    {
+      "file": "calibration-20261112-113140.csv",
+      "identity": "412e6b7a36fa88d531ce94ea39d644e0782d468d48e3c246f07c8e30a60643bd",
+      "duplicate_of": null,
+      "samples": 3500,
+      "labels": {
+        "": 1255,
+        "NEUTRAL": 2245
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 14.0,
+      "clipped": 3467,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 4095.0,
+      "neutral_median": 4095.0
+    },
+    {
+      "file": "calibration-20261112-113548.csv",
+      "identity": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duplicate_of": null,
+      "samples": 0,
+      "labels": {},
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 0.0,
+      "clipped": 0,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false
+    },
+    {
+      "file": "calibration-20261112-113613.csv",
+      "identity": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duplicate_of": "calibration-20261112-113548.csv",
+      "samples": 0,
+      "labels": {},
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 0.0,
+      "clipped": 0,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false
+    },
+    {
+      "file": "calibration-20261112-113628.csv",
+      "identity": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "duplicate_of": "calibration-20261112-113548.csv",
+      "samples": 0,
+      "labels": {},
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 0.0,
+      "clipped": 0,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false
+    },
+    {
+      "file": "calibration-20261112-113906.csv",
+      "identity": "e2679251b7f928ba5ee1b54cee57f34f882b2cbfd51d6b632c5e289432ccfca3",
+      "duplicate_of": null,
+      "samples": 22084,
+      "labels": {
+        "": 1420,
+        "NEUTRAL": 7501,
+        "BLINK": 2655,
+        "REST": 4498,
+        "LEFT": 2002,
+        "CENTER": 2508,
+        "RIGHT": 499,
+        "DOUBLE_BLINK": 1000,
+        "END": 1
+      },
+      "trials": {
+        "LEFT": 4,
+        "RIGHT": 1,
+        "BLINK": 6,
+        "DOUBLE_BLINK": 2
+      },
+      "seconds": 88.336,
+      "clipped": 59,
+      "gaps": 0,
+      "stalls": 1,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1911.0,
+      "neutral_median": 1911.0
+    },
+    {
+      "file": "calibration-20261112-114114.csv",
+      "identity": "d7054bd316b2bcb8465f618f0e9b8ff490cfe91158aa0d955a6103b94e800b79",
+      "duplicate_of": null,
+      "samples": 4101,
+      "labels": {
+        "": 1278,
+        "NEUTRAL": 2823
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 16.404,
+      "clipped": 0,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 1083,
+      "raw_max": 2389,
+      "raw_median": 1869.0,
+      "neutral_median": 1880.0
+    },
+    {
+      "file": "calibration-20261112-114212-relabelled.csv",
+      "identity": "67185c0804d0859c1de906dd0986d1604879c8e725ac7a703c0247d928e79a31",
+      "duplicate_of": null,
+      "samples": 128972,
+      "labels": {
+        "": 1251,
+        "NEUTRAL": 7005,
+        "DOUBLE_BLINK": 7639,
+        "REST": 40096,
+        "BLINK": 7522,
+        "RIGHT": 7511,
+        "CENTER": 20039,
+        "LEFT": 7517,
+        "NATURAL": 30375,
+        "END": 17
+      },
+      "trials": {
+        "LEFT": 20,
+        "RIGHT": 20,
+        "BLINK": 20,
+        "DOUBLE_BLINK": 20
+      },
+      "seconds": 515.888,
+      "clipped": 918,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": true,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1913.0,
+      "neutral_median": 1907.0
+    },
+    {
+      "file": "calibration-20261112-114212.csv",
+      "identity": "67185c0804d0859c1de906dd0986d1604879c8e725ac7a703c0247d928e79a31",
+      "duplicate_of": "calibration-20261112-114212-relabelled.csv",
+      "samples": 128972,
+      "labels": {
+        "": 1251,
+        "NEUTRAL": 7505,
+        "DOUBLE_BLINK": 10027,
+        "REST": 30064,
+        "BLINK": 10026,
+        "RIGHT": 10015,
+        "CENTER": 20043,
+        "LEFT": 10024,
+        "NATURAL": 30000,
+        "END": 17
+      },
+      "trials": {
+        "LEFT": 20,
+        "RIGHT": 20,
+        "BLINK": 20,
+        "DOUBLE_BLINK": 20
+      },
+      "seconds": 515.888,
+      "clipped": 918,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": true,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1913.0,
+      "neutral_median": 1907.0
+    },
+    {
+      "file": "calibration-20261112-122332.csv",
+      "identity": "1af1e3bf1be1959b6bc90cd41c48f1ed3042c193d0df157fb99d437fb5b8a1aa",
+      "duplicate_of": null,
+      "samples": 129510,
+      "labels": {
+        "": 1819,
+        "NEUTRAL": 7510,
+        "DOUBLE_BLINK": 10027,
+        "REST": 30049,
+        "LEFT": 10016,
+        "CENTER": 20023,
+        "RIGHT": 10032,
+        "BLINK": 10014,
+        "NATURAL": 30003,
+        "END": 17
+      },
+      "trials": {
+        "LEFT": 20,
+        "RIGHT": 20,
+        "BLINK": 20,
+        "DOUBLE_BLINK": 20
+      },
+      "seconds": 518.04,
+      "clipped": 450,
+      "gaps": 0,
+      "stalls": 1,
+      "complete": true,
+      "raw_min": 0,
+      "raw_max": 233,
+      "raw_median": 99.0,
+      "neutral_median": 103.0
+    },
+    {
+      "file": "calibration-20261112-125337.csv",
+      "identity": "0909fa578136002a425563c79dfc2172e6c013b885835f912383bcd179062206",
+      "duplicate_of": null,
+      "samples": 129577,
+      "labels": {
+        "": 1908,
+        "NEUTRAL": 7502,
+        "DOUBLE_BLINK": 10013,
+        "REST": 30078,
+        "RIGHT": 10007,
+        "CENTER": 20035,
+        "BLINK": 10008,
+        "LEFT": 10016,
+        "NATURAL": 29997,
+        "END": 13
+      },
+      "trials": {
+        "LEFT": 20,
+        "RIGHT": 20,
+        "BLINK": 20,
+        "DOUBLE_BLINK": 20
+      },
+      "seconds": 518.308,
+      "clipped": 2219,
+      "gaps": 0,
+      "stalls": 1,
+      "complete": true,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1910.0,
+      "neutral_median": 1909.0
+    },
+    {
+      "file": "calibration-20261112-170112-555.csv",
+      "identity": "06fc47d83df6decc0006088393d1d2c827c62a224939698073f9de20b7279c20",
+      "duplicate_of": null,
+      "samples": 2638,
+      "labels": {
+        "": 1769,
+        "NEUTRAL": 868,
+        "END": 1
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 10.552,
+      "clipped": 2601,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 4095.0,
+      "neutral_median": 4095.0
+    },
+    {
+      "file": "calibration-20261112-170710-083.csv",
+      "identity": "cabdd20b03819e0677a4d08407d90cf85d73b52438ae998be4733a30da78f37e",
+      "duplicate_of": null,
+      "samples": 130224,
+      "labels": {
+        "": 1782,
+        "NEUTRAL": 7505,
+        "RIGHT": 10033,
+        "CENTER": 20057,
+        "REST": 30281,
+        "LEFT": 10029,
+        "DOUBLE_BLINK": 10044,
+        "BLINK": 10479,
+        "NATURAL": 30003,
+        "END": 11
+      },
+      "trials": {
+        "LEFT": 20,
+        "RIGHT": 20,
+        "BLINK": 20,
+        "DOUBLE_BLINK": 20
+      },
+      "seconds": 520.896,
+      "clipped": 2721,
+      "gaps": 0,
+      "stalls": 1,
+      "complete": true,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1899.0,
+      "neutral_median": 1947.0
+    },
+    {
+      "file": "capture-20261111-170007.csv",
+      "identity": "458548fee66f7d6c9af087176781dee083a489c5d9de3a070526d54096d725ee",
+      "duplicate_of": null,
+      "samples": 75004,
+      "labels": {
+        "": 75004
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 300.016,
+      "clipped": 51134,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 463,
+      "raw_median": 0.0
+    },
+    {
+      "file": "capture-20261111-173504.csv",
+      "identity": "99a15cee3218ac4bbcd99d01a04b0be65ab0c80ace958c290634c52b47abf5f9",
+      "duplicate_of": null,
+      "samples": 9537,
+      "labels": {
+        "": 9537
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 38.148,
+      "clipped": 307,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1931.0
+    },
+    {
+      "file": "signal-check-run3-1729.csv",
+      "identity": "d0d8e87f5acf981f450982d38078b2f18cbea26e7ab63f9e677251e560c9cf6c",
+      "duplicate_of": null,
+      "samples": 11836,
+      "labels": {
+        "": 11836
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 47.344,
+      "clipped": 882,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1903.0
+    },
+    {
+      "file": "signal-check.csv",
+      "identity": "d0d8e87f5acf981f450982d38078b2f18cbea26e7ab63f9e677251e560c9cf6c",
+      "duplicate_of": "signal-check-run3-1729.csv",
+      "samples": 11836,
+      "labels": {
+        "": 11836
+      },
+      "trials": {
+        "LEFT": 0,
+        "RIGHT": 0,
+        "BLINK": 0,
+        "DOUBLE_BLINK": 0
+      },
+      "seconds": 47.344,
+      "clipped": 882,
+      "gaps": 0,
+      "stalls": 0,
+      "complete": false,
+      "raw_min": 0,
+      "raw_max": 4095,
+      "raw_median": 1903.0
+    }
+  ],
+  "split_policy": "User directs primary fit from newest 170710 ONLY: earlier sessions are known flawed. All older unique complete recordings are cross-session diagnostics, not definitive acceptance. Original/relabelled 114212 are identical raw data and cannot provide independent evidence. Partial/empty/unlabelled data are inventory only.",
+  "warning": "No fresh clean prospectively collected evaluation session exists. Accidental glances have not been identified per sample and are not silently removed.",
+  "results": {
+    "primary_newest": {
+      "training": [
+        "calibration-20261112-170710-083.csv"
+      ],
+      "status": "failed",
+      "approved": false,
+      "error": "No clean held LEFT/RIGHT looks found (too much clipping or no signal).",
+      "explanation": "34 of 40 movement cue windows contain ADC clipping. Only six windows are clip-free, and only two support the required full recovered plateau at tau .15. The other clean windows have late responses and do not contain the full .85-second plateau window. At least five clean plateau fits are required; that threshold was not lowered.",
+      "candidate_saved": false,
+      "training_samples": 130224,
+      "clipped_samples": 2721,
+      "clipped_move_windows": 34,
+      "movement_trials": [
+        {
+          "trial": 1,
+          "label": "RIGHT",
+          "cue_seconds": 37.148,
+          "clipped_samples": 11,
+          "raw_min": 1613,
+          "raw_max": 4095
+        },
+        {
+          "trial": 2,
+          "label": "LEFT",
+          "cue_seconds": 42.648,
+          "clipped_samples": 0,
+          "raw_min": 635,
+          "raw_max": 1963
+        },
+        {
+          "trial": 5,
+          "label": "RIGHT",
+          "cue_seconds": 55.22,
+          "clipped_samples": 70,
+          "raw_min": 0,
+          "raw_max": 4095
+        },
+        {
+          "trial": 7,
+          "label": "RIGHT",
+          "cue_seconds": 64.308,
+          "clipped_samples": 34,
+          "raw_min": 1867,
+          "raw_max": 4095
+        },
+        {
+          "trial": 8,
+          "label": "RIGHT",
+          "cue_seconds": 69.84,
+          "clipped_samples": 25,
+          "raw_min": 935,
+          "raw_max": 4095
+        },
+        {
+          "trial": 9,
+          "label": "RIGHT",
+          "cue_seconds": 75.356,
+          "clipped_samples": 25,
+          "raw_min": 1723,
+          "raw_max": 4095
+        },
+        {
+          "trial": 10,
+          "label": "RIGHT",
+          "cue_seconds": 80.848,
+          "clipped_samples": 23,
+          "raw_min": 1479,
+          "raw_max": 4095
+        },
+        {
+          "trial": 11,
+          "label": "RIGHT",
+          "cue_seconds": 86.372,
+          "clipped_samples": 21,
+          "raw_min": 1663,
+          "raw_max": 4095
+        },
+        {
+          "trial": 13,
+          "label": "LEFT",
+          "cue_seconds": 95.404,
+          "clipped_samples": 0,
+          "raw_min": 159,
+          "raw_max": 2315
+        },
+        {
+          "trial": 15,
+          "label": "LEFT",
+          "cue_seconds": 104.416,
+          "clipped_samples": 63,
+          "raw_min": 0,
+          "raw_max": 4095
+        },
+        {
+          "trial": 17,
+          "label": "LEFT",
+          "cue_seconds": 113.416,
+          "clipped_samples": 6,
+          "raw_min": 0,
+          "raw_max": 2221
+        },
+        {
+          "trial": 18,
+          "label": "LEFT",
+          "cue_seconds": 118.944,
+          "clipped_samples": 13,
+          "raw_min": 0,
+          "raw_max": 2135
+        },
+        {
+          "trial": 20,
+          "label": "RIGHT",
+          "cue_seconds": 128.004,
+          "clipped_samples": 27,
+          "raw_min": 1707,
+          "raw_max": 4095
+        },
+        {
+          "trial": 23,
+          "label": "RIGHT",
+          "cue_seconds": 140.564,
+          "clipped_samples": 21,
+          "raw_min": 1560,
+          "raw_max": 4095
+        },
+        {
+          "trial": 26,
+          "label": "LEFT",
+          "cue_seconds": 153.1,
+          "clipped_samples": 14,
+          "raw_min": 0,
+          "raw_max": 2076
+        },
+        {
+          "trial": 28,
+          "label": "LEFT",
+          "cue_seconds": 162.116,
+          "clipped_samples": 8,
+          "raw_min": 0,
+          "raw_max": 1997
+        },
+        {
+          "trial": 29,
+          "label": "LEFT",
+          "cue_seconds": 167.652,
+          "clipped_samples": 0,
+          "raw_min": 255,
+          "raw_max": 2189
+        },
+        {
+          "trial": 34,
+          "label": "RIGHT",
+          "cue_seconds": 187.24,
+          "clipped_samples": 22,
+          "raw_min": 0,
+          "raw_max": 1979
+        },
+        {
+          "trial": 36,
+          "label": "LEFT",
+          "cue_seconds": 196.26,
+          "clipped_samples": 12,
+          "raw_min": 0,
+          "raw_max": 2063
+        },
+        {
+          "trial": 37,
+          "label": "RIGHT",
+          "cue_seconds": 201.784,
+          "clipped_samples": 9,
+          "raw_min": 1821,
+          "raw_max": 4095
+        },
+        {
+          "trial": 38,
+          "label": "LEFT",
+          "cue_seconds": 207.324,
+          "clipped_samples": 18,
+          "raw_min": 0,
+          "raw_max": 4095
+        },
+        {
+          "trial": 40,
+          "label": "LEFT",
+          "cue_seconds": 216.384,
+          "clipped_samples": 24,
+          "raw_min": 0,
+          "raw_max": 1925
+        },
+        {
+          "trial": 41,
+          "label": "RIGHT",
+          "cue_seconds": 221.912,
+          "clipped_samples": 19,
+          "raw_min": 1719,
+          "raw_max": 4095
+        },
+        {
+          "trial": 43,
+          "label": "LEFT",
+          "cue_seconds": 230.948,
+          "clipped_samples": 0,
+          "raw_min": 54,
+          "raw_max": 2360
+        },
+        {
+          "trial": 46,
+          "label": "RIGHT",
+          "cue_seconds": 243.448,
+          "clipped_samples": 0,
+          "raw_min": 1129,
+          "raw_max": 3620
+        },
+        {
+          "trial": 47,
+          "label": "RIGHT",
+          "cue_seconds": 248.968,
+          "clipped_samples": 15,
+          "raw_min": 1096,
+          "raw_max": 4095
+        },
+        {
+          "trial": 51,
+          "label": "LEFT",
+          "cue_seconds": 265.004,
+          "clipped_samples": 25,
+          "raw_min": 0,
+          "raw_max": 2031
+        },
+        {
+          "trial": 52,
+          "label": "RIGHT",
+          "cue_seconds": 270.52,
+          "clipped_samples": 20,
+          "raw_min": 1661,
+          "raw_max": 4095
+        },
+        {
+          "trial": 53,
+          "label": "LEFT",
+          "cue_seconds": 276.036,
+          "clipped_samples": 24,
+          "raw_min": 0,
+          "raw_max": 2897
+        },
+        {
+          "trial": 55,
+          "label": "RIGHT",
+          "cue_seconds": 285.056,
+          "clipped_samples": 27,
+          "raw_min": 1834,
+          "raw_max": 4095
+        },
+        {
+          "trial": 58,
+          "label": "RIGHT",
+          "cue_seconds": 297.58,
+          "clipped_samples": 55,
+          "raw_min": 357,
+          "raw_max": 4095
+        },
+        {
+          "trial": 60,
+          "label": "LEFT",
+          "cue_seconds": 306.604,
+          "clipped_samples": 19,
+          "raw_min": 0,
+          "raw_max": 1939
+        },
+        {
+          "trial": 62,
+          "label": "LEFT",
+          "cue_seconds": 315.628,
+          "clipped_samples": 36,
+          "raw_min": 0,
+          "raw_max": 2775
+        },
+        {
+          "trial": 64,
+          "label": "LEFT",
+          "cue_seconds": 324.668,
+          "clipped_samples": 0,
+          "raw_min": 535,
+          "raw_max": 1901
+        },
+        {
+          "trial": 66,
+          "label": "RIGHT",
+          "cue_seconds": 333.72,
+          "clipped_samples": 17,
+          "raw_min": 1691,
+          "raw_max": 4095
+        },
+        {
+          "trial": 67,
+          "label": "LEFT",
+          "cue_seconds": 339.244,
+          "clipped_samples": 3,
+          "raw_min": 0,
+          "raw_max": 2028
+        },
+        {
+          "trial": 69,
+          "label": "RIGHT",
+          "cue_seconds": 348.264,
+          "clipped_samples": 18,
+          "raw_min": 1693,
+          "raw_max": 4095
+        },
+        {
+          "trial": 70,
+          "label": "LEFT",
+          "cue_seconds": 353.768,
+          "clipped_samples": 17,
+          "raw_min": 0,
+          "raw_max": 1945
+        },
+        {
+          "trial": 73,
+          "label": "LEFT",
+          "cue_seconds": 366.336,
+          "clipped_samples": 77,
+          "raw_min": 0,
+          "raw_max": 4095
+        },
+        {
+          "trial": 76,
+          "label": "RIGHT",
+          "cue_seconds": 378.88,
+          "clipped_samples": 27,
+          "raw_min": 1775,
+          "raw_max": 4095
+        }
+      ],
+      "accepted_plateaus_at_deployed_tau": 2
+    },
+    "deployed_default_on_newest_diagnostic": {
+      "passed": false,
+      "independent": false,
+      "recording_id": "cabdd20b03819e0677a4d08407d90cf85d73b52438ae998be4733a30da78f37e",
+      "model_id": "d0b5f74e20d95b9addfea652f465b5f0d031e3d490996b50c57fa6f60aa7101e",
+      "metrics": {
+        "trials": 40,
+        "hits": 22,
+        "missed": [
+          5,
+          7,
+          8,
+          9,
+          10,
+          11,
+          13,
+          15,
+          17,
+          29,
+          34,
+          37,
+          38,
+          43,
+          47,
+          58,
+          60,
+          73
+        ],
+        "recall": 0.55,
+        "precision": 0.55,
+        "protocol_precision": 0.611,
+        "false_during_protocol": 14,
+        "false_after_blink_cues": 2,
+        "false_per_minute": 2.13,
+        "natural_events": 4,
+        "natural_per_minute": 2.0,
+        "natural_seconds": 120.012,
+        "minutes": 8.56
+      }
+    }
+  },
+  "recommendation": "Do not enable EOG dashboard control from this failed fit. Capture smaller unsaturated movements promptly after cues; keep at least .85 seconds of stable side gaze after movement and collect a separate independent evaluation. Alternatively extend guided hold duration in a future code change. No raw samples, accidental glances or labels were removed."
+}
