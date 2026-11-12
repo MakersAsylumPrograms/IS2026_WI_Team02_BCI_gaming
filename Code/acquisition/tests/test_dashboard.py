@@ -136,8 +136,8 @@ def test_cli_joystick_and_run_reach_the_dashboard_check(capsys, monkeypatch):
     assert capsys.readouterr().out.count('is not reachable') == 2
 
 
-@pytest.mark.parametrize('approved', [False, True])
-def test_live_preview_forwards_only_approved_eog(monkeypatch, tmp_path, approved):
+@pytest.mark.parametrize('approved,override', [(False, False), (True, False), (False, True)])
+def test_live_preview_forwards_only_approved_eog(monkeypatch, tmp_path, approved, override):
     from types import SimpleNamespace
     from eog_acquisition import cli
     from eog_acquisition.cycle import CycleModel
@@ -169,8 +169,11 @@ def test_live_preview_forwards_only_approved_eog(monkeypatch, tmp_path, approved
     monkeypatch.setattr(cli, 'Pipeline', Pipeline)
     monkeypatch.setattr(cli, 'Live', Live)
     monkeypatch.setattr(cli, 'summarise', lambda *args: None)
-    assert cli.main(['run', '--dashboard', '--events', str(tmp_path / 'events.csv')]) == 0
-    assert [e.source for e in delivered] == (['eog', 'joystick'] if approved else ['joystick'])
+    args = ['run', '--dashboard', '--events', str(tmp_path / 'events.csv')]
+    if override:
+        args.append('--allow-provisional-eog')
+    assert cli.main(args) == 0
+    assert [e.source for e in delivered] == (['eog', 'joystick'] if approved or override else ['joystick'])
 
 
 def test_bridge_delivers_mixed_inputs_to_real_patient_api(tmp_path):

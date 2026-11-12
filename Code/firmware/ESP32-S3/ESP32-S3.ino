@@ -166,6 +166,19 @@ static void handleCommand(char *command) {
     Serial.println(running ? "RUNNING" : "STOPPED");
   } else if (strcmp(command, "PINS") == 0) {
     Serial.println("EOG=1 X=4 Y=5 SW=6 VCC=3V3");
+  } else if (strcmp(command, "JOY") == 0) {
+    if (running) {
+      Serial.println("STOP FIRST");
+    } else {
+      // Direct measurements bypass USB packet encoding and Python calibration.
+      const uint16_t x = analogRead(JOY_X_PIN);
+      const uint16_t y = analogRead(JOY_Y_PIN);
+      const uint32_t xMv = analogReadMilliVolts(JOY_X_PIN);
+      const uint32_t yMv = analogReadMilliVolts(JOY_Y_PIN);
+      Serial.printf("JOY X=%u Y=%u SW=%u X_mV=%lu Y_mV=%lu\n", x, y,
+                    digitalRead(JOY_SW_PIN) == LOW ? 1 : 0,
+                    (unsigned long)xMv, (unsigned long)yMv);
+    }
   } else if (strcmp(command, "STATS") == 0) {
     Serial.printf("STATS missed=%lu dropped=%lu\n", (unsigned long)missedIntervals,
                   (unsigned long)droppedPackets);

@@ -1,5 +1,20 @@
 # EOG + joystick input for the dashboard
 
+## Current prototype mode
+
+At the team's request, `Start-EqualCare.cmd` now loads
+`models/cycle-latest-provisional.json` and explicitly enables provisional EOG
+dashboard navigation. It fits the latest complete recording with a fixed historical
+amplifier time constant. On that same recording it detects 70% of cued looks,
+with 63.6% precision and 2.5 natural false commands/minute. These are training
+results, not independent validation. No raw samples or accidental glances were removed.
+
+EOG cycles move the highlight; joystick button SELECT chooses the highlighted item.
+The terminal marks unvalidated eye commands PROVISIONAL. To restore strict gating,
+set `allow_provisional_eog` to false in `Code/launcher-config.json`.
+Older local configuration files can override the bundled model selection; point
+their model entry to `Code/acquisition/models/cycle-latest-provisional.json` to use this fit.
+
 Latest audit: the complete `calibration-20261112-170710-083.csv` was used as the
 primary recording. It cannot provide a clean calibration: 34/40 movement windows
 touch the ADC rails and only two clean plateaus fit the old two-second cue windows.

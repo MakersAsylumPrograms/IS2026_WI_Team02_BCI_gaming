@@ -37,7 +37,9 @@ class LiveView:
             if self.detector:
                 self._lower.append(processed.gaze)
             else:
-                self._lower.append(processed.filtered if processed.usable else np.nan)
+                # Plotting is not classification: show the filtered waveform even
+                # when the raw ADC touches a rail. Hide only filter warm-up.
+                self._lower.append(processed.filtered if processed.ready else np.nan)
 
     def _cycle(self, event):
         if event.source == 'eog':
@@ -60,6 +62,7 @@ class LiveView:
         lower_title = ('Recovered gaze (CYCLE when it leaves the band and stays out)' if self.detector
                        else 'Filtered 0.5-20 Hz')
         lower_plot = window.addPlot(row=2, col=0, title=lower_title)
+        lower_plot.enableAutoRange(axis='y', enable=True)
         for plot in (raw_plot, lower_plot):
             plot.showGrid(x=True, y=True)
             plot.setLabel('bottom', 'seconds')

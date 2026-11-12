@@ -69,6 +69,7 @@ class Live:
         pins = self.device.command('PINS', wait=0.3)
         if pins == 'EOG=1 X=4 Y=5 SW=6 VCC=3V3':
             print(f'[firmware] {pins}')
+            print(f'[firmware] Direct ADC: {self.device.command("JOY", wait=0.3)}')
         else:
             print('[firmware] Pin mapping not confirmed. Upload the current ESP32-S3.ino '
                   'for EOG=GPIO1 and joystick=GPIO4/5/6. Older firmware may read the wrong pins.')
@@ -333,7 +334,11 @@ def cmd_run(args):
     joystick = None if args.no_joystick else make_joystick(args)
     detector = CycleDetector(model)
     eog_approved = dashboard_approved(model)
-    if args.dashboard and not dashboard_approved(model):
+    eog_forward = eog_approved or args.allow_provisional_eog
+    if args.allow_provisional_eog and not eog_approved:
+        print('[PROVISIONAL EOG] Dashboard navigation enabled by explicit prototype override. '
+              'Model has not passed independent evaluation; false navigation is expected.')
+    if args.dashboard and not eog_forward:
         if joystick is None:
             print('EOG model is not approved on independent evaluation. Evaluate with --apply first.')
             return 1
@@ -351,12 +356,13 @@ def cmd_run(args):
 
     def on_event(event):
         log.write(event)
-        if link and (event.source == 'joystick' or eog_approved):
+        if link and (event.source == 'joystick' or eog_forward):
             link.send(event)
         if event.source == 'eog':
             count[0] += 1
             print(f'  EYES      CYCLE #{count[0]}  (shift {event.shift:+.0f} counts)'
-                  + (f'  -> {args.command}' if link and eog_approved else '  [PREVIEW: not sent]'), flush=True)
+                  + (f'  -> {args.command}' + (' [PROVISIONAL]' if not eog_approved else '')
+                     if link and eog_forward else '  [PREVIEW: not sent]'), flush=True)
         else:
             print(f'  JOYSTICK  {event.direction:5}  -> {event.command}' + ('' if link else '  (not sent)'),
                   flush=True)
@@ -547,6 +553,8 @@ def main(argv=None):
     device_args(p)
     p.add_argument('--model', default=str(DEFAULT_MODEL), help='CYCLE model (default: the team model in models/)')
     p.add_argument('--dashboard', action='store_true', help='send each CYCLE to the EqualCare backend')
+    p.add_argument('--allow-provisional-eog', action='store_true',
+                   help='explicit prototype override: send EOG commands without independent approval')
     p.add_argument('--server', default=DEFAULT_SERVER)
     p.add_argument('--command', choices=COMMANDS, default='PREVIOUS',
                    help='dashboard command per eye CYCLE (default PREVIOUS: the highlight moves left)')

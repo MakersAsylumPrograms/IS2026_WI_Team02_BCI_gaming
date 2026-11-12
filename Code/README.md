@@ -7,8 +7,10 @@ and one combined EOG/joystick acquisition process, then opens the patient page.
 First setup uses isolated venvs and needs internet; unchanged subsequent starts work
 offline. Optional settings are in `Code/launcher-config.json` (copy the example).
 Keep the launcher open; Ctrl+C stops only its child processes. Port 8000 must be free.
-Runtime logs are local under `Code/runtime/`. The bundled EOG model is unverified:
-the dashboard starts with joystick control until a model passes independent evaluation.
+Runtime logs are local under `Code/runtime/`. At the team's request, the launcher
+enables the latest provisional EOG fit for prototype navigation. It remains unverified;
+false navigation is expected. Joystick press selects the highlighted item. Set
+`allow_provisional_eog` to false to require independent evaluation approval.
 The manual backend-only instructions below remain useful for diagnostics.
 
 Requires Python 3.11+; initial dependency installation needs internet.

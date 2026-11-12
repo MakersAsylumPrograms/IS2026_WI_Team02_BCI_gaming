@@ -32,8 +32,9 @@ The original diagrams differ: the flowchart includes game/OLED behaviour; the
 hardware block diagram describes the patient/staff workflow implemented here.
 The implementation-plan DOCX was supplied outside the repository.
 EOG is on GPIO 1; joystick X/Y/switch are GPIO 4/5/6. Both modules use 3V3.
-The bundled EOG model is unverified; dashboard EOG control requires independent
-evaluation approval. Joystick control remains available. Physical validation is
+The latest bundled fit is provisional. At the team's request, the launcher enables
+prototype EOG navigation despite incomplete independent validation. Joystick SELECT
+chooses the highlighted item. Set allow_provisional_eog=false for strict approval gating. Physical validation is
 still required; automated checks do not establish real-person accuracy.
 
 ## Licenses

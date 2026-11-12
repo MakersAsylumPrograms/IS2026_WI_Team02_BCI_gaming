@@ -14,7 +14,8 @@ import webbrowser
 ROOT = Path(__file__).resolve().parents[1]
 CODE = ROOT / 'Code'
 DEFAULTS = dict(port='COM7', server='http://127.0.0.1:8000',
-                model='Code/acquisition/models/cycle-default.json', plot=True, open_browser=True)
+                model='Code/acquisition/models/cycle-latest-provisional.json', plot=True,
+                open_browser=True, allow_provisional_eog=True)
 
 
 def config():
@@ -130,6 +131,9 @@ def main():
                    '--port', settings['port'], '--model', settings['model'], '--server', settings['server']]
         if settings['plot']:
             command.append('--plot')
+        if settings['allow_provisional_eog']:
+            command.append('--allow-provisional-eog')
+            print('[PROVISIONAL EOG] Prototype navigation enabled; independent accuracy is unverified.', flush=True)
         acquisition, reader = start(command, CODE / 'acquisition', 'input', log)
         children.append((acquisition, reader))
         if settings['open_browser']:

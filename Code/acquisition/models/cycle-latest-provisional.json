@@ -1,0 +1,101 @@
+{
+  "format": "equalcare-eog-cycle/1",
+  "tau": 0.15,
+  "threshold": 1750,
+  "hold": 0.8,
+  "leak": 8.0,
+  "lowpass_hz": 10.0,
+  "baseline_seconds": 30.0,
+  "reference_seconds": 1.0,
+  "settle": 0.6,
+  "away_timeout": 8.0,
+  "max_clipped": 0.35,
+  "warmup": 3.0,
+  "sample_rate": 250,
+  "calibration_ids": [
+    "cabdd20b03819e0677a4d08407d90cf85d73b52438ae998be4733a30da78f37e"
+  ],
+  "validation": null,
+  "calibration": {
+    "status": "PROVISIONAL_TRAINING_FIT_ONLY",
+    "source": "data/recordings/calibration-20261112-170710-083.csv",
+    "recording_id": "cabdd20b03819e0677a4d08407d90cf85d73b52438ae998be4733a30da78f37e",
+    "fixed_tau": 0.15,
+    "tau_provenance": "historical prior, not newly estimated",
+    "selection": "Conservative best training F1 among fixed-tau grid candidates; explicitly provisional prototype choice",
+    "no_accidental_glances_removed": true,
+    "raw_modified": false,
+    "metrics": {
+      "trials": 40,
+      "hits": 28,
+      "missed": [
+        5,
+        7,
+        8,
+        9,
+        10,
+        11,
+        13,
+        15,
+        17,
+        58,
+        60,
+        73
+      ],
+      "recall": 0.7,
+      "precision": 0.636,
+      "protocol_precision": 0.718,
+      "false_during_protocol": 11,
+      "false_after_blink_cues": 1,
+      "false_per_minute": 1.68,
+      "natural_events": 5,
+      "natural_per_minute": 2.5,
+      "natural_seconds": 120.012,
+      "minutes": 8.56
+    },
+    "clipping": {
+      "samples": 2721,
+      "fraction": 0.020894765941761886,
+      "raw_min": 0,
+      "raw_max": 4095
+    },
+    "dashboard_approved": false,
+    "limitations": [
+      "Same-recording fit is optimistic and is not independent validation.",
+      "ADC rail samples are actual saturation, distinct from plot display cutoff.",
+      "Brief clipping allowed by unchanged live CycleDetector max_clipped=.35s.",
+      "Older recordings were considered flawed by user and not used for fitting or approval."
+    ],
+    "highest_recall_alternative": {
+      "threshold": 1750,
+      "hold": 0.15,
+      "metrics": {
+        "trials": 40,
+        "hits": 31,
+        "missed": [
+          7,
+          8,
+          9,
+          10,
+          11,
+          13,
+          15,
+          17,
+          60
+        ],
+        "recall": 0.775,
+        "precision": 0.419,
+        "protocol_precision": 0.633,
+        "false_during_protocol": 18,
+        "false_after_blink_cues": 4,
+        "false_per_minute": 2.74,
+        "natural_events": 25,
+        "natural_per_minute": 12.5,
+        "natural_seconds": 120.012,
+        "minutes": 8.56
+      }
+    },
+    "selected_threshold": 1750,
+    "selected_hold": 0.8
+  }
+}
