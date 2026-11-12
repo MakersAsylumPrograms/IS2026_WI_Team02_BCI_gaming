@@ -34,8 +34,8 @@ press → SELECT. Both run in one process and reach the dashboard as the device'
 1, 2 ...). Use the printed labels. A joystick wire on TX/RX makes the board stop answering
 (`no ESP32-S3 Chords firmware answered WHORU`). Check before a session: `view` should show a raw
 EOG baseline of about **1,800–2,000** counts, a firm look should move it by about 1,000, and
-`joystick` should print a centre around 3,100 (5V) or 2,000 (3V3) that moves toward 0 / 4,095 as
-you push. Both axes stuck at exactly 0 means the joystick has no power.
+`joystick` should print x/y values that change a lot as you push. Both axes stuck at exactly 0
+means the joystick has no power.
 
 On 5V the joystick's X/Y outputs go above the ESP32-S3's ~3.6 V pin limit at full deflection; a
 10 kΩ resistor in series in each of VRx and VRy limits the current. The ADC saturates at ~3.1 V,
@@ -102,10 +102,16 @@ It is separate from the dashboard's environment. All commands below run from `Co
 
 - **Eyes:** after a 3 s warm-up, each look to either side, held until the plot flashes **CYCLE**,
   moves the highlight one option (`PREVIOUS`, i.e. to the left; `--command NEXT` for the other way).
-- **Joystick:** its centre is measured in the first half second while it is untouched. Then every
-  push moves the highlight (left/up → PREVIOUS, right/down → NEXT) and a press selects. One push
-  is one command, even if held. If left/right come out the wrong way round, add `--invert-joystick`.
-  `--no-joystick` ignores it.
+- **Joystick:** a press selects. Each push moves the highlight (left/up → PREVIOUS, right/down →
+  NEXT), registered within ~8 ms of the stick leaving its resting range. One push is one command,
+  even if held. Calibrate the module once (below) so left really is left. `--no-joystick` ignores it.
+
+**Joystick calibration (once per module, 30 s):**
+`.venv\Scripts\python.exe -m eog_acquisition joystick-calibrate`. Follow the prompts (rest, then push
+left, right, up, down twice each). It learns which axis each direction moves and how far the resting
+noise reaches, prints which directions this module can produce, and saves `models/joystick.json`,
+which `run` and `joystick` then use. Commit that file to share it. Without a profile, a standard
+(centred, quiet) joystick still works automatically.
 
 `run` checks that the backend is reachable first and keeps the device shown as online. Commands
 that cannot be delivered within 1.6 s are dropped, never delivered late. Without `--dashboard`,
@@ -180,6 +186,7 @@ CYCLEs a minute, and why the joystick will confirm selections.
 | `calibrate <recordings>` | fit a CYCLE model |
 | `evaluate <recordings> --model M` | score labelled recordings / count CYCLEs in unlabelled ones |
 | `replay <recording> --model M` | list CYCLEs with the protocol label at each |
+| `joystick-calibrate` | 30 s guided joystick calibration → `models/joystick.json` |
 | `joystick [--dashboard]` | live joystick test: raw values and each push/press |
 | `run [--dashboard] [--plot]` | live eyes + joystick, optionally driving the dashboard |
 
@@ -190,7 +197,7 @@ CYCLEs a minute, and why the joystick will confirm selections.
 | `protocol.py`, `device.py`, `chords_compat.py` | Chords packet decoding, exactly-once ordered delivery, device control |
 | `processing.py` | health checks, 0.5–20 Hz display filter, `Pipeline` (one pass per sample, in order) |
 | `cycle.py` | gaze recovery, `CycleDetector`, scoring and calibration |
-| `joystick.py` | `JoystickReader`: centre detection, pushes → NEXT/PREVIOUS, debounced press → SELECT |
+| `joystick.py` | `JoystickReader` and its calibration profile: pushes → NEXT/PREVIOUS, debounced press → SELECT |
 | `dashboard.py` | `DashboardLink`: eye CYCLE (source `eog`) and joystick commands (source `joystick`) → `POST /api/v1/input-events` (+ heartbeat), same contract as `Code/backend/simulate_device.py` |
 | `recording.py`, `session.py`, `viewer.py`, `cli.py` | recordings, guided protocol, live plot, command line |
 
@@ -209,9 +216,10 @@ Covered:
 - The detector on Pill-shaped signals: one CYCLE per held look either way, none for the return,
   blinks, glances, saturation, warm-up, gaps or no signal.
 - Calibration finding the Pill time constant and precise settings, without changing raw files.
-- The joystick reader at 5V and 3V3 centres: one command per push in each direction, a debounced
-  SELECT, waiting for a still stick before measuring the centre, and nothing when no joystick is
-  connected.
+- The joystick: calibration learning each direction of an off-centre, noisy module (and flagging
+  directions it cannot produce), pushes firing within 8 ms of the trigger in the right direction,
+  standard joysticks at 5V and 3V3 without a profile, a debounced SELECT, and nothing when no
+  joystick is connected.
 - `DashboardLink` against the real backend app over HTTP: each eye CYCLE and joystick command
   reaches the patient screen as one command with the right source, a bad token is not retried, and
   stale commands are dropped.

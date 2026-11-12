@@ -13,7 +13,7 @@ import numpy as np
 from .cycle import (DEFAULT_MODEL, MIN_RECALL, CalibrationError, CycleDetector, calibrate, detect, load_model,
                     save_model, score)
 from .dashboard import COMMANDS, DEFAULT_SERVER, DashboardLink
-from .joystick import JoystickReader
+from .joystick import DEFAULT_PROFILE, DIRECTIONS, JoystickReader, build_profile, load_profile, save_profile
 from .device import DEFAULT_PORT, DeviceError, EOGDevice
 from .processing import Pipeline
 from .protocol import SAMPLE_RATE
@@ -297,14 +297,25 @@ def connect_dashboard(args):
     return link.start()
 
 
+def make_joystick(args):
+    """JoystickReader using the saved calibration profile when there is one; prints what it will do."""
+    profile = load_profile(args.joystick_profile)
+    reader = JoystickReader(invert=args.invert_joystick, profile=profile)
+    if profile:
+        known = ', '.join(f'{d.lower()} -> {reader._command(d)}' for d in DIRECTIONS if d in reader.rules)
+        print(f'Joystick (calibrated): {known or "no directions"}; press -> SELECT.')
+    else:
+        print('Joystick: press -> SELECT. Directions need a calibration for this module: '
+              'python -m eog_acquisition joystick-calibrate  (a standard joystick also works without one).')
+    return reader
+
+
 def cmd_run(args):
     """Live eyes (CYCLE) + joystick; with --dashboard both drive the patient screen."""
     model = load_model(args.model)
     print(f'Eyes: CYCLE = look to EITHER side over {model.threshold} counts and hold {model.hold} s '
           f'(the look back to centre does not count) -> {args.command}.')
-    if not args.no_joystick:
-        print('Joystick: left/up -> PREVIOUS, right/down -> NEXT, press -> SELECT'
-              + (' (inverted)' if args.invert_joystick else '') + '. Leave it still for the first second.')
+    joystick = None if args.no_joystick else make_joystick(args)
     link = None
     if args.dashboard:
         link = connect_dashboard(args)
@@ -312,7 +323,6 @@ def cmd_run(args):
             return 1
     log = EventLog(args.events or DATA / 'events' / f'events-{stamp()}.csv')
     recorder = Recorder(args.record, port=args.port, in_plus=args.in_plus, notes='live run') if args.record else None
-    joystick = None if args.no_joystick else JoystickReader(invert=args.invert_joystick)
     pipeline = Pipeline(detector=CycleDetector(model), recorder=recorder, joystick=joystick)
     count = [0]
 
@@ -354,7 +364,7 @@ def cmd_run(args):
 
 def cmd_joystick(args):
     """Live joystick test: raw X/Y/button and each push or press; --dashboard also sends them."""
-    reader = JoystickReader(invert=args.invert_joystick)
+    reader = make_joystick(args)
     pipeline = Pipeline(joystick=reader)
     link = connect_dashboard(args) if args.dashboard else None
     if args.dashboard and link is None:
@@ -363,17 +373,12 @@ def cmd_joystick(args):
 
     def on_sample(processed):
         x, y, button = processed.sample.joystick or (0, 0, 0)
-        if reader.ready and not state['ready']:
+        if reader.mode == 'centre' and not state['ready']:
             state['ready'] = True
-            if reader.mode == 'centre':
-                print(f'  centre measured: x={reader.centre[0]:.0f} y={reader.centre[1]:.0f}. Push the stick.', flush=True)
-            else:
-                print('  no steady centre (this joystick rests low and noisy): high-push mode. '
-                      'A push that drives X high -> NEXT, Y high -> PREVIOUS.', flush=True)
+            print(f'  centre measured: x={reader.centre[0]:.0f} y={reader.centre[1]:.0f}. Push the stick.', flush=True)
         if processed.sample.host_time >= state['next']:
             state['next'] = processed.sample.host_time + 0.5
-            print(f'  x={x:4d} y={y:4d} button={"PRESSED" if button else "idle"}'
-                  + ('' if reader.ready else '   (measuring centre: leave the stick still for 3 s)'), flush=True)
+            print(f'  x={x:4d} y={y:4d} button={"PRESSED" if button else "idle"}', flush=True)
 
     def on_event(event):
         if link:
@@ -392,7 +397,51 @@ def cmd_joystick(args):
         if link:
             link.stop()
     if not reader.ready:
-        print('The joystick centre was never measured: no joystick connected, or the stick was never still.')
+        print('Directions were not active: run  python -m eog_acquisition joystick-calibrate  once for this module.')
+    return 0
+
+
+def cmd_joystick_calibrate(args):
+    """30-second guided joystick calibration: learns this module's rest and each push direction."""
+    steps = [('REST', 3.0, 'Leave the stick untouched')]
+    for _ in range(2):
+        for direction in DIRECTIONS:
+            steps += [('MOVING', 0.4, f'Push {direction} all the way and hold'), (direction, 1.6, ''),
+                      ('MOVING', 0.4, 'Let go'), ('REST', 1.1, '')]
+    rows = []
+    done = {}
+
+    def guide(pipeline, keep_going):
+        pipeline.on_sample(lambda p: rows.append((p.label, *p.sample.joystick[:2])) if p.sample.joystick else None)
+        time.sleep(1.0)
+        for label, seconds, text in steps:
+            pipeline.set_label(label)
+            if text:
+                print(f'  {text}', flush=True)
+            end = time.monotonic() + seconds
+            while time.monotonic() < end:
+                if not keep_going():
+                    return
+                time.sleep(0.02)
+        pipeline.set_label('END')
+        done['ok'] = True
+
+    print('Joystick calibration (about 30 s). Follow each instruction as soon as it appears.')
+    _stream(args, None, session=guide)
+    if not done.get('ok'):
+        print('Calibration stopped early; nothing saved.')
+        return 1
+    try:
+        profile, report = build_profile([r for r in rows if r[0] in ('REST', *DIRECTIONS)])
+    except ValueError as exc:
+        print(f'Calibration failed: {exc}')
+        return 1
+    for line in report:
+        print('  ' + line)
+    if not profile['rules']:
+        print('No direction could be told apart from the resting noise; nothing saved. Check the joystick power.')
+        return 1
+    print(f'Saved {save_profile(profile, args.joystick_profile)}. `joystick` and `run` use it automatically.')
     return 0
 
 
@@ -468,6 +517,7 @@ def main(argv=None):
                    help='dashboard command per eye CYCLE (default PREVIOUS: the highlight moves left)')
     p.add_argument('--no-joystick', action='store_true', help='ignore the joystick channels')
     p.add_argument('--invert-joystick', action='store_true', help='swap NEXT and PREVIOUS for the joystick')
+    p.add_argument('--joystick-profile', default=str(DEFAULT_PROFILE), help=argparse.SUPPRESS)
     p.add_argument('--events', help='event log CSV (default data/events/events-<time>.csv)')
     p.add_argument('--record', help='also record raw samples to this path')
     p.add_argument('--plot', action='store_true')
@@ -478,7 +528,13 @@ def main(argv=None):
     p.add_argument('--dashboard', action='store_true', help='also send joystick commands to the backend')
     p.add_argument('--server', default=DEFAULT_SERVER)
     p.add_argument('--invert-joystick', action='store_true')
+    p.add_argument('--joystick-profile', default=str(DEFAULT_PROFILE), help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_joystick)
+
+    p = sub.add_parser('joystick-calibrate', help=cmd_joystick_calibrate.__doc__)
+    device_args(p, in_plus=False)
+    p.add_argument('--joystick-profile', default=str(DEFAULT_PROFILE), help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_joystick_calibrate)
 
     p = sub.add_parser('replay', help=cmd_replay.__doc__)
     p.add_argument('recording')

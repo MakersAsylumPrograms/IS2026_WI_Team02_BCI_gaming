@@ -95,16 +95,59 @@ def test_low_resting_joystick_like_the_teams_module():
     assert events == [('RIGHT', 'NEXT'), ('DOWN', 'NEXT')]
 
 
-def test_noisy_low_resting_module_uses_high_push_mode():
-    # Shaped like the team's run on 2026-11-12: at rest x wanders 300-1100, y 0-350; pushes reach 2000-4071
-    # and Y partly follows X.
-    import numpy as np
-    rng = np.random.default_rng(0)
-    rest = lambda seconds: [(1 / FS, int(rng.integers(300, 1100)), int(rng.integers(0, 350)), 0)  # noqa: E731
-                            for _ in range(int(seconds * FS))]
-    spike = [(1 / FS, 2500, 200, 0)]                          # one noisy sample: must not count
-    path = (rest(3.5) + spike + rest(0.5) + [(0.3, 4071, 2744, 0)] + rest(0.5)    # X push (Y follows) -> NEXT
-            + [(0.3, 900, 2700, 0)] + rest(0.5) + [(0.3, 2909, 1741, 0)] + rest(0.5))
-    events, reader = commands(path)
-    assert reader.mode == 'high'
-    assert events == [('X-PUSH', 'NEXT'), ('Y-PUSH', 'PREVIOUS'), ('X-PUSH', 'NEXT')]
+# ---- calibrated profile: shaped like the team's module (2026-11-12) ---------------------------
+# At rest x wanders 300-1100 and y 0-350. In this synthetic module RIGHT drives x up (Y follows a little),
+# DOWN drives y up, LEFT drives x towards 0 (just below the rest noise) and UP does nothing measurable.
+import numpy as np
+
+from eog_acquisition.joystick import build_profile
+
+PUSHES = {'RIGHT': (4000, 1300), 'DOWN': (700, 3300), 'LEFT': (40, 150), 'UP': (700, 170)}
+
+
+def noisy(seconds, x=(300, 1100), y=(0, 350), seed=0):
+    rng = np.random.default_rng(seed)
+    n = int(seconds * FS)
+    return list(zip(rng.integers(*x, n).tolist(), rng.integers(*y, n).tolist()))
+
+
+def calibration_rows():
+    rows = [('REST', x, y) for x, y in noisy(3)]
+    for k, (direction, (px, py)) in enumerate(PUSHES.items()):
+        rows += [(direction, x, y) for x, y in noisy(1.6, (px - 40, px + 40), (py - 40, py + 40), seed=k + 1)]
+        rows += [('REST', x, y) for x, y in noisy(1.1, seed=k + 10)]
+    return rows
+
+
+def test_calibration_learns_each_direction_from_the_module_itself():
+    profile, report = build_profile(calibration_rows())
+    rules = profile['rules']
+    assert set(rules) == {'RIGHT', 'DOWN', 'LEFT'}                     # UP never leaves the resting noise
+    assert (rules['RIGHT']['axis'], rules['RIGHT']['sign']) == (0, 1)
+    assert (rules['DOWN']['axis'], rules['DOWN']['sign']) == (1, 1)
+    assert (rules['LEFT']['axis'], rules['LEFT']['sign']) == (0, -1)
+    assert any('UP' in line and 'NOT detectable' in line for line in report)
+
+
+def test_calibrated_pushes_fire_immediately_in_the_right_direction():
+    profile, _ = build_profile(calibration_rows())
+    reader = JoystickReader(profile=profile)
+    rule = profile['rules']['RIGHT']
+    stream = [(x, y, 0) for x, y in noisy(2, seed=50)]                     # rest noise: nothing
+    ramp = np.linspace(700, 4000, 25).astype(int)                           # a 100 ms push to the right
+    stream += [(int(v), 400, 0) for v in ramp] + [(4000, 1300, 0)] * 50     # held (Y cross-talk)
+    stream += [(x, y, 0) for x, y in noisy(0.5, seed=51)]
+    stream += [(700, 3300, 0)] * 50 + [(x, y, 0) for x, y in noisy(0.5, seed=52)]   # down
+    stream += [(40, 150, 0)] * 50 + [(x, y, 0) for x, y in noisy(0.5, seed=53)]     # left
+    events = [(e.direction, e.command, e.index) for i, (x, y, b) in enumerate(stream)
+              for e in reader.update(Sample(i, i % 256, 1900, i / FS, 0, False, (x, y, b)))]
+    assert [(d, c) for d, c, _ in events] == [('RIGHT', 'NEXT'), ('DOWN', 'NEXT'), ('LEFT', 'PREVIOUS')]
+    crossing = 2 * FS + int(np.argmax(ramp >= rule['trigger']))
+    assert events[0][2] - crossing <= 2                                     # within 8 ms of the trigger
+
+
+def test_directions_on_the_same_axis_and_side_cannot_both_be_kept():
+    rows = calibration_rows() + [('UP', x, y) for x, y in noisy(1.6, (3000, 3100), (100, 200), seed=99)]
+    rows = [r for r in rows if r[0] != 'UP' or r[1] >= 3000]                # UP now also drives x up, weaker
+    profile, report = build_profile(rows)
+    assert 'UP' not in profile['rules'] and any('UP' in line and 'dropped' in line for line in report)
