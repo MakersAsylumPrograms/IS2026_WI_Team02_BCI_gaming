@@ -164,6 +164,8 @@ static void handleCommand(char *command) {
     stopStreaming();
   } else if (strcmp(command, "STATUS") == 0) {
     Serial.println(running ? "RUNNING" : "STOPPED");
+  } else if (strcmp(command, "PINS") == 0) {
+    Serial.println("EOG=1 X=4 Y=5 SW=6 VCC=3V3");
   } else if (strcmp(command, "STATS") == 0) {
     Serial.printf("STATS missed=%lu dropped=%lu\n", (unsigned long)missedIntervals,
                   (unsigned long)droppedPackets);

@@ -1,0 +1,34 @@
+{
+  "approved": false,
+  "raw_data_modified": false,
+  "scoring": "Current strict CYCLE event-onset scoring",
+  "empty_recordings": ["calibration-20261112-113548.csv", "calibration-20261112-113613.csv", "calibration-20261112-113628.csv"],
+  "partial_recordings": {
+    "calibration-20261112-113140.csv": 3500,
+    "calibration-20261112-113906.csv": 22084,
+    "calibration-20261112-114114.csv": 4101
+  },
+  "duplicate_raw_identity": {
+    "sha256": "67185c0804d0859c1de906dd0986d1604879c8e725ac7a703c0247d928e79a31",
+    "files": ["calibration-20261112-114212.csv", "calibration-20261112-114212-relabelled.csv"],
+    "note": "Different labels, identical raw samples and indexes; not independent recordings"
+  },
+  "default_model_replays": [
+    {"recording": "114212", "trials": 40, "hits": 3, "precision": 0.75, "recall": 0.075, "natural_false_per_minute": 0.0},
+    {"recording": "114212-relabelled", "trials": 40, "hits": 1, "precision": 0.25, "recall": 0.025, "natural_false_per_minute": 0.0},
+    {"recording": "122332", "trials": 40, "hits": 0, "precision": null, "recall": 0.0, "natural_false_per_minute": 0.0, "adc_range": [0, 233]},
+    {"recording": "125337", "trials": 40, "hits": 22, "precision": 0.524, "recall": 0.55, "natural_false_per_minute": 3.5}
+  ],
+  "fresh_fit": {
+    "training_recording": "calibration-20261112-125337.csv",
+    "training_identity": "0909fa578136002a425563c79dfc2172e6c013b885835f912383bcd179062206",
+    "requested_minimum_recall": 0.9,
+    "warning": "No setting reached recall 0.9; highest-recall setting selected",
+    "tau": 0.15, "threshold": 1553.3, "hold": 0.5,
+    "training_precision": 0.5, "training_recall": 0.8, "training_natural_false_per_minute": 10.0,
+    "heldout_relabelled_114212": {"independent": true, "passed": false, "hits": 16, "trials": 40, "precision": 0.615, "recall": 0.4, "natural_false_per_minute": 2.47},
+    "heldout_122332": {"independent": true, "passed": false, "hits": 0, "trials": 40, "precision": null, "recall": 0.0, "natural_false_per_minute": 0.0},
+    "published_as_approved_model": false
+  },
+  "required_next_step": "Fresh calibration and independent evaluation after firmware/wiring verification; do not claim full physical EOG operation from these results"
+}

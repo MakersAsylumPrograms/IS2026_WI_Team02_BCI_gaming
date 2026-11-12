@@ -66,6 +66,12 @@ class Live:
     def start(self):
         reply = self.device.open()
         print(f'Connected: ESP32-S3 on {self.device.port} (status {reply or "?"})')
+        pins = self.device.command('PINS', wait=0.3)
+        if pins == 'EOG=1 X=4 Y=5 SW=6 VCC=3V3':
+            print(f'[firmware] {pins}')
+        else:
+            print('[firmware] Pin mapping not confirmed. Upload the current ESP32-S3.ino '
+                  'for EOG=GPIO1 and joystick=GPIO4/5/6. Older firmware may read the wrong pins.')
         self.device.start(self.pipeline)
 
     def warnings(self):
@@ -313,8 +319,9 @@ def make_joystick(args):
         known = ', '.join(f'{d.lower()} -> {reader._command(d)}' for d in DIRECTIONS if d in reader.rules)
         print(f'Joystick (calibrated): {known or "no directions"}; press -> SELECT.')
     else:
-        print('Joystick: press -> SELECT. Directions need a calibration for this module: '
-              'python -m eog_acquisition joystick-calibrate  (a standard joystick also works without one).')
+        print('Joystick: leave centred and release the button during startup. '
+              '3V3 power; X=GPIO4, Y=GPIO5, SW=GPIO6. Standard sticks auto-centre; '
+              'use joystick-calibrate only if necessary.')
     return reader
 
 
@@ -354,6 +361,17 @@ def cmd_run(args):
                   flush=True)
 
     pipeline.on_event(on_event)
+    joystick_status = {'time': 0.0, 'warned': False}
+    def input_status(processed):
+        if not joystick or processed.sample.host_time - joystick_status['time'] < 5:
+            return
+        joystick_status['time'] = processed.sample.host_time
+        print(f'[joystick] raw X/Y/SW={processed.sample.joystick}; '
+              f'centre={joystick.centre}; ready={joystick.ready}', flush=True)
+        if not joystick.ready:
+            print('[joystick] Waiting for stable centre: release stick. Zero/rail readings: '
+                  'check 3V3, common GND, GPIO4/5, and reflash the updated firmware.', flush=True)
+    pipeline.on_sample(input_status)
     live = Live(args.port, pipeline)
     try:
         live.start()
