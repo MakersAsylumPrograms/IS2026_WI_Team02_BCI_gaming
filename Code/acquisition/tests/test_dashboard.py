@@ -200,11 +200,12 @@ def test_bridge_delivers_mixed_inputs_to_real_patient_api(tmp_path):
     try:
         link.send(SimpleNamespace(source='eog'))
         link.send(SimpleNamespace(source='joystick', command='SELECT'))
-        assert wait_for(lambda: link.sent == 2)
+        link.send(SimpleNamespace(source='eog', command='SELECT'))
+        assert wait_for(lambda: link.sent == 3)
         response = patient.get('/api/v1/input-events', query_string={
             'after': initial['cursor'], 'epoch': initial['epoch']}, headers=headers)
         assert response.status_code == 200
-        assert [event['command'] for event in response.json['events']] == ['PREVIOUS', 'SELECT']
+        assert [event['command'] for event in response.json['events']] == ['PREVIOUS', 'SELECT', 'SELECT']
     finally:
         link.stop()
         server.shutdown()

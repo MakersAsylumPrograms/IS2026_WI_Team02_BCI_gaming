@@ -10,6 +10,11 @@ with 63.6% precision and 2.5 natural false commands/minute. These are training
 results, not independent validation. No raw samples or accidental glances were removed.
 
 EOG cycles move the highlight; joystick button SELECT chooses the highlighted item.
+Provisional mode also enables DOUBLE BLINK → SELECT: blink twice comfortably,
+with roughly 0.2–0.7 seconds between blink starts. One blink has no selection
+action. The detector requires two short same-polarity pulses, ignores filter
+rebound, and has a one-second cooldown. It is experimental and can confuse other
+short paired movements with blinks; joystick press remains available.
 The terminal marks unvalidated eye commands PROVISIONAL. To restore strict gating,
 set `allow_provisional_eog` to false in `Code/launcher-config.json`.
 Older local configuration files can override the bundled model selection; point

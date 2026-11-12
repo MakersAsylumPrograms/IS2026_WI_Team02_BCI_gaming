@@ -44,7 +44,7 @@ class LiveView:
     def _cycle(self, event):
         if event.source == 'eog':
             self.cycles += 1
-            self._flash = 'CYCLE'
+            self._flash = 'DOUBLE BLINK → SELECT' if event.command == 'SELECT' else 'CYCLE'
         else:
             self._flash = f'{event.direction} → {event.command}'
         self._last_cycle = time.monotonic()

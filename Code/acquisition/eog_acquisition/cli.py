@@ -351,7 +351,10 @@ def cmd_run(args):
             return 1
     log = EventLog(args.events or DATA / 'events' / f'events-{stamp()}.csv')
     recorder = Recorder(args.record, port=args.port, in_plus=args.in_plus, notes='live run') if args.record else None
-    pipeline = Pipeline(detector=detector, recorder=recorder, joystick=joystick)
+    pipeline = Pipeline(detector=detector, recorder=recorder, joystick=joystick,
+                        double_blink=args.allow_provisional_eog)
+    if args.allow_provisional_eog:
+        print('DOUBLE BLINK -> SELECT (provisional): two quick comfortable blinks; single blink does nothing.')
     count = [0]
 
     def on_event(event):
@@ -360,8 +363,9 @@ def cmd_run(args):
             link.send(event)
         if event.source == 'eog':
             count[0] += 1
-            print(f'  EYES      CYCLE #{count[0]}  (shift {event.shift:+.0f} counts)'
-                  + (f'  -> {args.command}' + (' [PROVISIONAL]' if not eog_approved else '')
+            action = 'SELECT' if event.command == 'SELECT' else args.command
+            print(f'  EYES      {event.command} #{count[0]}  (shift {event.shift:+.0f} counts)'
+                  + (f'  -> {action}' + (' [PROVISIONAL]' if not eog_approved else '')
                      if link and eog_forward else '  [PREVIEW: not sent]'), flush=True)
         else:
             print(f'  JOYSTICK  {event.direction:5}  -> {event.command}' + ('' if link else '  (not sent)'),

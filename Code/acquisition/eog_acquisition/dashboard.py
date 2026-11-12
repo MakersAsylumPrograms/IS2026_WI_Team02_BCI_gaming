@@ -86,7 +86,7 @@ class DashboardLink:
     def send(self, event=None):
         """Queue one dashboard command for a CycleEvent (eyes) or a JoystickEvent."""
         source = getattr(event, 'source', 'eog')
-        command = event.command if source == 'joystick' else self.command
+        command = event.command if source == 'joystick' or getattr(event, 'command', '') == 'SELECT' else self.command
         if source not in ('eog', 'joystick') or command not in ('NEXT', 'PREVIOUS', 'SELECT'):
             raise ValueError('Unsupported dashboard event')
         if self._stop.is_set():

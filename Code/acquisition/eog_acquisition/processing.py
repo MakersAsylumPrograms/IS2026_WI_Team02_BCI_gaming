@@ -112,11 +112,13 @@ class Pipeline:
     raw values are never modified.
     """
 
-    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None):
+    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None, double_blink=False):
         self.filter = EOGFilter(sample_rate)
         self.health = HealthMonitor(sample_rate)
         self.detector = detector
         self.joystick = joystick
+        from .blink import DoubleBlinkDetector
+        self.blink = DoubleBlinkDetector(sample_rate) if double_blink else None
         self.recorder = recorder
         self._tag = ('', 0)
         self._sample_callbacks = []
@@ -164,6 +166,12 @@ class Pipeline:
             gaze = self.detector.value
         if self.joystick:
             events = events + self.joystick.update(sample)
+        if self.blink:
+            selections = self.blink.update(sample, filtered, ready)
+            if selections:
+                events = [event for event in events if event.source != 'eog'] + selections
+                if self.detector:
+                    self.detector.reset()
         processed = ProcessedSample(sample, filtered, clipped, ready and not clipped, label, trial, ready, gaze)
         if self.recorder:
             self.recorder.write(processed)
