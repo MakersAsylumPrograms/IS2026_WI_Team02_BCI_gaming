@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {BedSingle, LoaderCircle, LogIn, LogOut, Stethoscope, WifiOff} from 'lucide-react';
 import {useStore} from '../lib/store.js';
-import {Brand, Card, DemoBanner, Disclaimer} from './ui.jsx';
+import {Brand, Card, Disclaimer} from './ui.jsx';
 
 // Page frame shared by the patient and staff screens:
 // top bar, offline banner, sign-in card, and the app once signed in.
@@ -12,7 +12,6 @@ export default function Shell({role, session, connection, children}) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <DemoBanner />
       <TopBar role={role} connection={connection} onLogout={signedIn ? session.logout : null} />
       <OfflineBanner connection={connection} />
 
@@ -137,7 +136,7 @@ function LoginCard({role, session}) {
           )}
           <Field id="password" type="password" autoComplete="current-password" autoFocus={!staff}
                  label={staff ? 'Staff password' : 'Patient password'}
-                 hint="Demo: any password works"
+                 hint={staff ? undefined : 'caregiver: see backend console'}
                  value={password} onChange={setPassword} />
           <button
             type="submit"

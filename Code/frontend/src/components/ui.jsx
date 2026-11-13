@@ -1,5 +1,4 @@
-import {FlaskConical, HeartPulse, RotateCcw} from 'lucide-react';
-import {resetDemo} from '../lib/demoApi.js';
+import {HeartPulse} from 'lucide-react';
 
 // Logo + name. Pass href to make it a link (not on the patient screen, so a
 // stray click can never navigate the patient away).
@@ -31,24 +30,6 @@ export function Kbd({children}) {
     <kbd className="inline-flex min-w-7 items-center justify-center rounded-md border border-slate-300 border-b-2 bg-white px-1.5 py-0.5 font-sans text-xs font-semibold text-slate-700">
       {children}
     </kbd>
-  );
-}
-
-// Thin ribbon on every page: this is a design preview, not the live system.
-export function DemoBanner() {
-  return (
-    <div className="bg-teal-900 text-teal-50">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 text-center text-xs font-medium sm:text-sm">
-        <FlaskConical className="size-4 shrink-0 text-teal-300" aria-hidden="true" />
-        <span>Demo preview — not connected to EqualCare. Requests only live in this browser; any password works.</span>
-        <button type="button"
-                onClick={() => { resetDemo(); window.location.reload(); }}
-                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 font-semibold text-white transition hover:bg-white/20">
-          <RotateCcw className="size-3.5" aria-hidden="true" />
-          Reset demo
-        </button>
-      </div>
-    </div>
   );
 }
 

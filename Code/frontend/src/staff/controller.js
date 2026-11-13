@@ -1,5 +1,4 @@
-import {ApiError, typeInfo} from '../lib/api.js';
-import {DemoAPI} from '../lib/demoApi.js';   // DEMO: swap for EqualCareAPI when integrating
+import {ApiError, EqualCareAPI, typeInfo} from '../lib/api.js';
 import {createStore, startPolling} from '../lib/store.js';
 import {createConnection, createSession} from '../lib/session.js';
 
@@ -26,7 +25,7 @@ export function duration(ms) {
 }
 
 export function createStaffApp() {
-  const api = new DemoAPI('staff');
+  const api = new EqualCareAPI('staff');
   const connection = createConnection();
   const store = createStore();
 

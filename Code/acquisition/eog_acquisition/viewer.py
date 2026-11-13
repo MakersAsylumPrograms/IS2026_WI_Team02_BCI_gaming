@@ -44,7 +44,10 @@ class LiveView:
     def _cycle(self, event):
         if event.source == 'eog':
             self.cycles += 1
-            self._flash = 'DOUBLE BLINK → SELECT' if event.command == 'SELECT' else 'CYCLE'
+            if isinstance(event.direction, str):          # a gesture: LEFT, RIGHT or DOUBLE_BLINK
+                self._flash = f'{event.direction.replace("_", " ")} → {event.command}'
+            else:
+                self._flash = 'DOUBLE BLINK → SELECT' if event.command == 'SELECT' else 'CYCLE'
         else:
             self._flash = f'{event.direction} → {event.command}'
         self._last_cycle = time.monotonic()
@@ -59,8 +62,11 @@ class LiveView:
         window.resize(1000, 700)
         command = window.addLabel('', row=0, col=0)
         raw_plot = window.addPlot(row=1, col=0, title='Raw ADC counts (channel 1, unchanged)')
-        lower_title = ('Recovered gaze (CYCLE when it leaves the band and stays out)' if self.detector
-                       else 'Filtered 0.5-20 Hz')
+        if hasattr(self.detector, 'filter'):              # gesture detector: the signal Chords-Web shows
+            lower_title = 'Chords-Web EOG signal (a look: one wide pulse out of the band, up = left, down = right)'
+        else:
+            lower_title = ('Recovered gaze (CYCLE when it leaves the band and stays out)' if self.detector
+                           else 'Filtered 0.5-20 Hz')
         lower_plot = window.addPlot(row=2, col=0, title=lower_title)
         lower_plot.enableAutoRange(axis='y', enable=True)
         for plot in (raw_plot, lower_plot):
@@ -87,7 +93,7 @@ class LiveView:
                 band[0].setValue(reference + threshold)
                 band[1].setValue(reference - threshold)
             joystick = self.pipeline.joystick
-            footer.setText(f'{self.status()}   CYCLE commands: {self.cycles}'
+            footer.setText(f'{self.status()}   eye commands: {self.cycles}'
                            + (f'   detector: {self.detector.state}' if self.detector else '')
                            + (f'   joystick: {"ready" if joystick.ready else "measuring centre (leave it still)"}'
                               if joystick else ''))

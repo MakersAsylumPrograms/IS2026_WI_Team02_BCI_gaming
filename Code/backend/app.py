@@ -27,7 +27,7 @@ TRANSITIONS = {'acknowledge': ('PENDING', 'ACKNOWLEDGED', 'acknowledged_at'),
 EVENT_TTL = 2        # seconds a device command stays deliverable
 LEASE = 3            # seconds one patient screen owns device input
 OFFLINE_AFTER = 15   # seconds without heartbeat before the ESP32 shows offline
-FRONTEND = Path(__file__).parent.parent / 'frontend'
+FRONTEND = Path(__file__).parent.parent / 'frontend' / 'dist'   # React screens, built by `npm run build`
 SCHEMA = '''
     PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS requests (
@@ -67,9 +67,9 @@ def identifier(value):
 
 def create_app(config=None):
     # --- Configuration -------------------------------------------------------
-    app = Flask(__name__, static_folder=FRONTEND / 'shared', static_url_path='/assets')
+    app = Flask(__name__, static_folder=None)
     app.config.update(
-        SECRET_KEY=secrets.token_hex(32),
+        SECRET_KEY=secrets.token_hex(32), FRONTEND=str(FRONTEND),
         DATABASE=str(Path(__file__).parent / 'instance' / 'equalcare.sqlite3'),
         STAFF_LOGIN_ID='staff', PATIENT_NAME='Bed 1', DEVICE_ID='esp32-01',
         MAX_CONTENT_LENGTH=4096, SESSION_COOKIE_HTTPONLY=True,
@@ -337,13 +337,25 @@ def create_app(config=None):
         conn.commit()
         return jsonify(request=dict(find(rid)))
 
-    # --- Dashboards (shared JS/CSS served from /assets) ----------------------
+    # --- Dashboards (the built React screens; their JS/CSS/fonts are under /assets) ---
+    frontend = Path(app.config['FRONTEND'])
+
+    def page(folder):
+        if not (folder / 'index.html').is_file():
+            return error('FRONTEND_NOT_BUILT', 'The screens are not built yet. Start with Start-EqualCare.cmd, or run '
+                         '"npm install" and "npm run build" in Code/frontend, then reload.', 503)
+        return send_from_directory(folder, 'index.html')
+
     @app.get('/')
     def home():
-        return send_from_directory(FRONTEND, 'index.html')
+        return page(frontend)
 
     @app.get('/<any(patient, staff):role>/')
     def dashboard(role):
-        return send_from_directory(FRONTEND / role, 'index.html')
+        return page(frontend / role)
+
+    @app.get('/assets/<path:filename>')
+    def assets(filename):
+        return send_from_directory(frontend / 'assets', filename)
 
     return app

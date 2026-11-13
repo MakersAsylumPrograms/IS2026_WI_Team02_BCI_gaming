@@ -3,55 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
   <title>EqualCare · Staff</title>
-  <link rel="stylesheet" href="/assets/styles.css">
-  <!-- All behaviour lives in Code/frontend/shared/staff.js (served as /assets/staff.js).
-       The backend's security policy blocks inline <script> and style="" attributes. -->
-  <script type="module" src="/assets/staff.js"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <!-- All behaviour lives in src/staff (controller.js = logic, StaffApp.jsx = view). -->
 </head>
-<body class="staff-page">
-  <header class="topbar">
-    <span class="brand">EqualCare · Staff</span>
-    <span id="connection" class="pill">Connecting…</span>
-    <button id="logout" class="small" hidden>Sign out</button>
-  </header>
-
-  <!-- Shown when the backend can't be reached -->
-  <div id="offline-banner" class="banner danger" role="alert" hidden></div>
-  <!-- Flashes when a new request arrives -->
-  <div id="alert-banner" class="banner alert" role="alert" hidden></div>
-
-  <main>
-    <form id="login" class="login" hidden>
-      <label for="login-id">Staff login ID</label>
-      <input id="login-id" type="text" autocomplete="username" required>
-      <label for="password">Staff password <small>(see backend console)</small></label>
-      <input id="password" type="password" autocomplete="current-password" required>
-      <button>Sign in</button>
-      <p id="login-message" role="status"></p>
-    </form>
-
-    <section id="app" hidden>
-      <div class="toolbar">
-        <span id="summary" class="summary" aria-live="polite">Loading…</span>
-        <!-- Browsers only allow sound after a click on the page -->
-        <button id="sound" class="sound-button">🔕 Click to enable sound alerts</button>
-      </div>
-      <p id="device" class="device"></p>
-      <p id="notice" role="status"></p>
-
-      <h2>Needs attention</h2>
-      <div id="active"></div>
-      <p id="active-empty" class="empty" hidden>All clear — no active requests.</p>
-      <p class="hint">Shortcuts: <kbd>S</kbd> = top waiting request is Seen · <kbd>D</kbd> = top seen request is Done</p>
-
-      <!-- Resolved requests, collapsed by default -->
-      <details class="history">
-        <summary id="history-summary">Resolved history (0)</summary>
-        <div id="history"></div>
-        <p id="history-empty" class="empty">No resolved requests yet.</p>
-      </details>
-    </section>
-  </main>
+<body class="bg-calm min-h-screen font-sans text-slate-800 antialiased">
+  <div id="root"></div>
+  <script type="module" src="/src/staff/main.jsx"></script>
 </body>
 </html>

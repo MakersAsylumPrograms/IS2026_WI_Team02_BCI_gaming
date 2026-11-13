@@ -3,19 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
   <title>EqualCare</title>
-  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <!-- React + Tailwind source. `npm run build` writes dist/, which the backend serves. -->
 </head>
-<body class="landing-page">
-  <main>
-    <p class="eyebrow">EqualCare · local prototype</p>
-    <h1>Which screen is this laptop?</h1>
-    <!-- On the second laptop, open http://<patient-laptop-IP>:8000/ and pick Staff. -->
-    <nav class="cards">
-      <a class="card" href="/patient/">🛏️ Patient screen →</a>
-      <a class="card" href="/staff/">🩺 Staff dashboard →</a>
-    </nav>
-    <p class="muted">Educational demonstration. Not a clinical alert system.</p>
-  </main>
+<body class="bg-calm min-h-screen font-sans text-slate-800 antialiased">
+  <div id="root"></div>
+  <script type="module" src="/src/landing/main.jsx"></script>
 </body>
 </html>

@@ -175,11 +175,31 @@ def test_storage_failure_never_reports_success(system):
     assert patient.get('/api/v1/requests').json['requests'] == []
 
 
+def test_built_screens_are_served_and_missing_ones_say_how_to_build(system, tmp_path):
+    _, config, _ = system
+    site = tmp_path / 'dist'                        # stands in for Code/frontend/dist
+    for page in ('index.html', 'patient/index.html', 'staff/index.html', 'assets/app-1a2b.js'):
+        (site / page).parent.mkdir(parents=True, exist_ok=True)
+        (site / page).write_text(page, encoding='utf-8')
+    client = create_app(dict(config, FRONTEND=str(site))).test_client()
+    for path, content in (('/', 'index.html'), ('/patient/', 'patient/index.html'), ('/staff/', 'staff/index.html'),
+                          ('/assets/app-1a2b.js', 'assets/app-1a2b.js')):
+        response = client.get(path)
+        assert response.status_code == 200 and response.get_data(as_text=True) == content
+        assert "default-src 'self'" in response.headers['Content-Security-Policy']
+    assert client.get('/assets/../index.html').status_code == 404
+    assert client.get('/assets/missing.js').status_code == 404
+    unbuilt = create_app(dict(config, FRONTEND=str(tmp_path / 'nothing'))).test_client()
+    for path in ('/', '/patient/', '/staff/'):
+        response = unbuilt.get(path)
+        assert response.status_code == 503 and response.json['error']['code'] == 'FRONTEND_NOT_BUILT'
+    assert unbuilt.get('/api/v1/health').status_code == 200        # the API does not need the screens
+
+
 def test_assets_and_logout_release(system):
     app, _, _ = system
     patient, ph = login(app, 'patient')
-    for path in ('/', '/patient/', '/staff/', '/assets/api.js', '/api/v1/health'):
-        assert patient.get(path).status_code == 200
+    assert patient.get('/api/v1/health').status_code == 200
     poll(patient)
     assert patient.delete('/api/v1/session', headers=ph).status_code == 200
     second, _ = login(app, 'patient')

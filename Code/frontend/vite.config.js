@@ -3,9 +3,9 @@ import {defineConfig} from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-// STANDALONE DEMO of the React + Tailwind redesign. Not connected to the
-// backend: src/lib/demoApi.js fakes it in the browser.
-// `npm run dev` -> http://localhost:5173 (landing), /patient/, /staff/
+// The EqualCare patient and staff screens (React + Tailwind).
+// `npm run build` -> dist/, which the backend (Code/backend/app.py) serves at /, /patient/, /staff/.
+// `npm run dev`   -> http://localhost:5173 with live reload; API calls go to the backend on port 8000.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
@@ -22,5 +22,5 @@ export default defineConfig({
       },
     },
   },
-  server: {port: 5173, strictPort: true},
+  server: {port: 5173, strictPort: true, proxy: {'/api': 'http://127.0.0.1:8000'}},
 });

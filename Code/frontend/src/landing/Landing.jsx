@@ -1,5 +1,5 @@
 import {ArrowRight, BedSingle, Eye, Gamepad2, ShieldCheck, Stethoscope} from 'lucide-react';
-import {Brand, DemoBanner, Disclaimer} from '../components/ui.jsx';
+import {Brand, Disclaimer} from '../components/ui.jsx';
 
 const ROLES = [
   {
@@ -31,12 +31,8 @@ const FEATURES = [
 export default function Landing() {
   return (
     <div className="flex min-h-screen flex-col">
-      <DemoBanner />
       <header className="mx-auto flex w-full max-w-6xl items-center px-4 py-5 sm:px-6">
         <Brand subtitle="Assistive nurse call" />
-        <span className="ml-auto rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
-          Design preview
-        </span>
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-10 sm:px-6 sm:pt-16">
@@ -78,7 +74,7 @@ export default function Landing() {
           ))}
         </nav>
         <p className="mt-6 text-sm text-slate-400">
-          Tip: open both screens in two tabs side by side. A request sent on the patient screen appears on the staff dashboard.
+          The patient screen runs on the bedside laptop; the staff dashboard opens from any device on the same network.
         </p>
       </main>
 

@@ -10,9 +10,11 @@ from pathlib import Path
 
 import numpy as np
 
-from .cycle import (DEFAULT_MODEL, MIN_RECALL, CalibrationError, CycleDetector, calibrate, detect, load_model,
-                    save_model, score, evaluate_model, dashboard_approved)
+from . import chords_calibration, cycle, gestures
+from .cycle import (DEFAULT_MODEL, MIN_RECALL, CalibrationError, CycleDetector, calibrate, detect, save_model, score,
+                    evaluate_model)
 from .dashboard import COMMANDS, DEFAULT_SERVER, DashboardLink
+from .gestures import GestureDetector, GestureModel
 from .joystick import DEFAULT_PROFILE, DIRECTIONS, JoystickReader, build_profile, load_profile, save_profile
 from .device import DEFAULT_PORT, DeviceError, EOGDevice
 from .processing import Pipeline
@@ -34,6 +36,24 @@ def save_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding='utf-8')
     return path
+
+
+def load_model(path):
+    """The eye model in `path`: a GestureModel (left / right / double blink) or an older CycleModel."""
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
+    return GestureModel.from_dict(data) if data.get('format') == gestures.FORMAT else cycle.CycleModel.from_dict(data)
+
+
+def dashboard_approved(model):
+    return (gestures if isinstance(model, GestureModel) else cycle).dashboard_approved(model)
+
+
+def cycle_model(path):
+    model = load_model(path)
+    if isinstance(model, GestureModel):
+        raise ValueError(f'{Path(path).name} is a gesture model: use replay-chords for it; '
+                         'evaluate and replay take a CYCLE model.')
+    return model
 
 
 def status_line(health, decoder):
@@ -277,7 +297,7 @@ def cmd_calibrate(args):
 
 def cmd_evaluate(args):
     """Score a labelled recording (or count CYCLEs in an unlabelled one) with a CYCLE model."""
-    model = load_model(args.model)
+    model = cycle_model(args.model)
     for path in args.recordings:
         recording = load_recording(path)
         events = detect(recording, model)
@@ -327,20 +347,28 @@ def make_joystick(args):
 
 
 def cmd_run(args):
-    """Live eyes (CYCLE) + joystick; with --dashboard both drive the patient screen."""
+    """Live eyes + joystick; with --dashboard both drive the patient screen."""
     model = load_model(args.model)
-    print(f'Eyes: CYCLE = look to EITHER side over {model.threshold} counts and hold {model.hold} s '
-          f'(the look back to centre does not count) -> {args.command}.')
+    gesture_model = isinstance(model, GestureModel)
+    if gesture_model:
+        detector = GestureDetector(model)
+        print(f'Eyes ({Path(args.model).name}; Chords-Web EOG filter + {model.notch_hz} Hz notch, IN+ at the '
+              f'{model.in_plus} eye): look LEFT and hold -> PREVIOUS, look RIGHT and hold -> NEXT, '
+              'double blink -> SELECT. The look back to the centre and single blinks do nothing.')
+    else:
+        detector = CycleDetector(model)
+        print(f'Eyes: CYCLE = look to EITHER side over {model.threshold} counts and hold {model.hold} s '
+              f'(the look back to centre does not count) -> {args.command}.')
     joystick = None if args.no_joystick else make_joystick(args)
-    detector = CycleDetector(model)
     eog_approved = dashboard_approved(model)
     eog_forward = eog_approved or args.allow_provisional_eog
     if args.allow_provisional_eog and not eog_approved:
         print('[PROVISIONAL EOG] Dashboard navigation enabled by explicit prototype override. '
-              'Model has not passed independent evaluation; false navigation is expected.')
+              'Model has not passed its evaluation; false navigation is expected.')
     if args.dashboard and not eog_forward:
         if joystick is None:
-            print('EOG model is not approved on independent evaluation. Evaluate with --apply first.')
+            print('EOG model has not passed its evaluation (calibrate-chords for a gesture model, '
+                  'evaluate --apply for a CYCLE model).')
             return 1
         print('EOG model is unverified: dashboard runs JOYSTICK ONLY. EOG detector stays active for preview; '
               'candidate eye events are logged but not sent.')
@@ -351,9 +379,9 @@ def cmd_run(args):
             return 1
     log = EventLog(args.events or DATA / 'events' / f'events-{stamp()}.csv')
     recorder = Recorder(args.record, port=args.port, in_plus=args.in_plus, notes='live run') if args.record else None
-    pipeline = Pipeline(detector=detector, recorder=recorder, joystick=joystick,
-                        double_blink=args.allow_provisional_eog)
-    if args.allow_provisional_eog:
+    old_double_blink = args.allow_provisional_eog and not gesture_model   # a gesture model has its own
+    pipeline = Pipeline(detector=detector, recorder=recorder, joystick=joystick, double_blink=old_double_blink)
+    if old_double_blink:
         print('DOUBLE BLINK -> SELECT (provisional): two quick comfortable blinks; single blink does nothing.')
     count = [0]
 
@@ -363,8 +391,12 @@ def cmd_run(args):
             link.send(event)
         if event.source == 'eog':
             count[0] += 1
-            action = 'SELECT' if event.command == 'SELECT' else args.command
-            print(f'  EYES      {event.command} #{count[0]}  (shift {event.shift:+.0f} counts)'
+            if isinstance(event.direction, str):          # gesture: LEFT / RIGHT / DOUBLE_BLINK
+                what, action = f'{event.direction} #{count[0]}  (pulse {event.shift:+.2f})', event.command
+            else:
+                what = f'{event.command} #{count[0]}  (shift {event.shift:+.0f} counts)'
+                action = 'SELECT' if event.command == 'SELECT' else args.command
+            print(f'  EYES      {what}'
                   + (f'  -> {action}' + (' [PROVISIONAL]' if not eog_approved else '')
                      if link and eog_forward else '  [PREVIEW: not sent]'), flush=True)
         else:
@@ -386,7 +418,7 @@ def cmd_run(args):
     live = Live(args.port, pipeline)
     try:
         live.start()
-        print('Running. Eyes: 3 s warm-up, then look to either side and hold. Ctrl+C (or close the plot) stops.')
+        print('Running. Eyes: 3 s warm-up, then look to a side and hold. Ctrl+C (or close the plot) stops.')
         if args.plot:
             from .viewer import LiveView
             LiveView(pipeline, SAMPLE_RATE, lambda: status_line(pipeline.health.snapshot(), live.device.decoder)
@@ -401,7 +433,7 @@ def cmd_run(args):
         if recorder:
             recorder.close(dict(health=pipeline.health.snapshot(), firmware_stats=stats))
     summarise(pipeline.health.snapshot(), stats, live.device.decoder)
-    print(f'{count[0]} eye CYCLE(s); events logged to {log.path}'
+    print(f'{count[0]} eye command(s); events logged to {log.path}'
           + (f'; dashboard: {link.sent} sent, {link.dropped} dropped' if link else ''))
     return 0
 
@@ -491,12 +523,72 @@ def cmd_joystick_calibrate(args):
 
 def cmd_replay(args):
     """Offline CYCLE detection on a recording, with the protocol label at each CYCLE."""
-    model = load_model(args.model)
+    model = cycle_model(args.model)
     recording = load_recording(args.recording)
     position = {int(v): i for i, v in enumerate(recording.index)}
     for event in detect(recording, model):
         i = position[event.index]
         print(f'{i / recording.sample_rate:8.2f}s  CYCLE  [{recording.label[i] or "-"}]  shift {event.shift:+.0f}')
+    return 0
+
+
+def print_gesture_score(name, s):
+    print(f"  {name}: {s['look_hits']}/{s['looks']} cued looks gave the right command, "
+          f"{s['wrong_direction']} the wrong one; {s['select_hits']}/{s['double_blinks']} cued double blinks "
+          f"gave SELECT; false commands: {s['false_moves']} move, {s['false_selects']} SELECT "
+          f"in {s['minutes']} min")
+
+
+def cmd_calibrate_chords(args):
+    """Fit the LEFT / RIGHT / DOUBLE BLINK detector to Chords-Web recordings of the calibration sequence."""
+    recordings = [chords_calibration.load_chords_csv(path) for path in args.recordings]
+    model, report = chords_calibration.calibrate(recordings)
+    out = gestures.save_model(model, args.out, report)
+    print(f'Look = pulse over {model.look_peak} for at least {model.look_width} s that stays '
+          f'(level {model.tail}); blink spike over {model.blink_peak}. Chords-Web units, 1.0 = 2,048 counts.')
+    print('Each recording scored with thresholds fitted WITHOUT it (the honest numbers):')
+    for s in report['held_out']:
+        print_gesture_score(s['recording'], s)
+    print_gesture_score('together', report['held_out_total'])
+    print('Final thresholds (fitted on all recordings) on the same recordings:')
+    print_gesture_score('together', report['in_sample_total'])
+    passed = model.validation['passed']
+    print(f"Dashboard EOG {'APPROVED' if passed else 'NOT approved'}: needs "
+          + ', '.join(f'{k} {v}' for k, v in chords_calibration.CRITERIA.items()))
+    print(f'Model saved to {out}')
+    return 0 if passed else 1
+
+
+def cmd_replay_chords(args):
+    """Replay a Chords-Web recording through the gesture detector; --dashboard sends the commands, in real time."""
+    model = load_model(args.model)
+    if not isinstance(model, GestureModel):
+        raise ValueError(f'{Path(args.model).name} is not a gesture model.')
+    recording = chords_calibration.load_chords_csv(args.recording)
+    link = None
+    if args.dashboard:
+        link = connect_dashboard(args)
+        if link is None:
+            return 1
+        print(f'Replaying {recording.seconds:.0f} s at {args.speed:g}x. Ctrl+C stops.')
+    events, start = chords_calibration.detect(recording, model), time.monotonic()
+    try:
+        for event in events:
+            at = event.index / recording.sample_rate
+            if link:
+                time.sleep(max(0.0, start + at / args.speed - time.monotonic()))
+                link.send(event)
+            print(f'{at:8.2f}s  {event.direction:12}  -> {event.command}  (pulse {event.shift:+.2f})', flush=True)
+        if link:
+            time.sleep(0.5)                               # let the last command leave
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if link:
+            link.stop()
+    print_gesture_score(recording.name, chords_calibration.score(recording, events))
+    if link:
+        print(f'dashboard: {link.sent} sent, {link.dropped} dropped')
     return 0
 
 
@@ -553,15 +645,29 @@ def main(argv=None):
     p.add_argument('--apply', action='store_true', help='persist independent evaluation approval in the model')
     p.set_defaults(func=cmd_evaluate)
 
+    p = sub.add_parser('calibrate-chords', help=cmd_calibrate_chords.__doc__)
+    p.add_argument('recordings', nargs='+', help='Chords-Web CSV recordings (Counter,Channel1) of the calibration sequence')
+    p.add_argument('--out', default=str(gestures.DEFAULT_MODEL), help='model path (default: the team gesture model)')
+    p.set_defaults(func=cmd_calibrate_chords)
+
+    p = sub.add_parser('replay-chords', help=cmd_replay_chords.__doc__)
+    p.add_argument('recording', help='Chords-Web CSV recording')
+    p.add_argument('--model', default=str(gestures.DEFAULT_MODEL))
+    p.add_argument('--dashboard', action='store_true', help='send the commands to the EqualCare backend as they occur')
+    p.add_argument('--server', default=DEFAULT_SERVER)
+    p.add_argument('--speed', type=float, default=1.0, help='with --dashboard: playback speed (default 1 = real time)')
+    p.set_defaults(func=cmd_replay_chords)
+
     p = sub.add_parser('run', help=cmd_run.__doc__)
     device_args(p)
-    p.add_argument('--model', default=str(DEFAULT_MODEL), help='CYCLE model (default: the team model in models/)')
-    p.add_argument('--dashboard', action='store_true', help='send each CYCLE to the EqualCare backend')
+    p.add_argument('--model', default=str(gestures.DEFAULT_MODEL),
+                   help='eye model (default: the team gesture model, models/eog-gestures.json)')
+    p.add_argument('--dashboard', action='store_true', help='send eye and joystick commands to the EqualCare backend')
     p.add_argument('--allow-provisional-eog', action='store_true',
                    help='explicit prototype override: send EOG commands without independent approval')
     p.add_argument('--server', default=DEFAULT_SERVER)
     p.add_argument('--command', choices=COMMANDS, default='PREVIOUS',
-                   help='dashboard command per eye CYCLE (default PREVIOUS: the highlight moves left)')
+                   help='CYCLE models only: dashboard command per eye CYCLE (default PREVIOUS)')
     p.add_argument('--no-joystick', action='store_true', help='ignore the joystick channels')
     p.add_argument('--invert-joystick', action='store_true', help='swap NEXT and PREVIOUS for the joystick')
     p.add_argument('--joystick-profile', default=str(DEFAULT_PROFILE), help=argparse.SUPPRESS)

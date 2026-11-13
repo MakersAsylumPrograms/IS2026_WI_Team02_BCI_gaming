@@ -67,10 +67,51 @@ class LauncherTests(unittest.TestCase):
                  patch.object(launcher, 'config', return_value=launcher.DEFAULTS), \
                  patch.object(launcher, 'occupied', return_value=False), \
                  patch.object(launcher, 'environment', return_value='python'), \
+                 patch.object(launcher, 'screens'), \
                  patch.object(launcher, 'start', return_value=(backend, reader)), \
                  patch.object(launcher, 'stop') as stop:
                 self.assertEqual(1, launcher.main())
                 stop.assert_called_once_with(backend)
+
+    def frontend(self, directory, built, stale=False):
+        folder = Path(directory)
+        for name in ('package.json', 'package-lock.json', 'vite.config.js', 'index.html', 'src/app.jsx'):
+            (folder / name).parent.mkdir(parents=True, exist_ok=True)
+            (folder / name).write_text(name)
+        if built:
+            (folder / 'dist').mkdir()
+            (folder / 'dist/index.html').write_text('built')
+        if stale:                                   # the source was edited after the build
+            newer = (folder / 'dist/index.html').stat().st_mtime + 10
+            launcher.os.utime(folder / 'src/app.jsx', (newer, newer))
+        return folder
+
+    def test_screens_already_built_from_current_source_are_left_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = self.frontend(directory, built=True)
+            with patch.object(launcher.subprocess, 'run') as run:
+                launcher.screens(folder)
+                run.assert_not_called()
+
+    def test_screens_are_installed_once_and_rebuilt_when_source_is_newer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = self.frontend(directory, built=True, stale=True)
+            (folder / 'node_modules').mkdir()
+            with patch.object(launcher.shutil, 'which', return_value='npm'), \
+                 patch.object(launcher.subprocess, 'run') as run:
+                launcher.screens(folder)
+                launcher.screens(folder)          # dependencies unchanged: build only
+            commands = [call.args[0][1:] for call in run.call_args_list]
+            self.assertEqual([['ci', '--no-audit', '--no-fund'], ['run', 'build'], ['run', 'build']], commands)
+
+    def test_without_node_missing_screens_stop_with_instructions_and_old_ones_still_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(launcher.shutil, 'which', return_value=None), \
+                 patch.object(launcher.subprocess, 'run') as run:
+                with self.assertRaisesRegex(RuntimeError, 'Node.js'):
+                    launcher.screens(self.frontend(directory + '/missing', built=False))
+                launcher.screens(self.frontend(directory + '/old', built=True, stale=True))
+                run.assert_not_called()
 
 
 if __name__ == '__main__':

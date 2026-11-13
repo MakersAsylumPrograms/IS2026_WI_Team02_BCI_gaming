@@ -3,49 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0f766e">
   <title>EqualCare · Patient</title>
-  <link rel="stylesheet" href="/assets/styles.css">
-  <!-- All behaviour lives in Code/frontend/shared/patient.js (served as /assets/patient.js).
-       The backend's security policy blocks inline <script> and style="" attributes. -->
-  <script type="module" src="/assets/patient.js"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+  <!-- All behaviour lives in src/patient (controller.js = logic, PatientApp.jsx = view). -->
 </head>
-<body class="patient-page">
-  <header class="topbar">
-    <span class="brand">EqualCare · Patient</span>
-    <span id="connection" class="pill">Connecting…</span>
-    <button id="logout" class="small" hidden>Sign out</button>
-  </header>
-
-  <!-- Shown when the backend can't be reached -->
-  <div id="offline-banner" class="banner danger" role="alert" hidden></div>
-
-  <main>
-    <!-- Sign-in. A caregiver types the patient password once per browser;
-         after that a page refresh stays signed in. -->
-    <form id="login" class="login" hidden>
-      <label for="password">Patient password <small>(caregiver: see backend console)</small></label>
-      <input id="password" type="password" autocomplete="current-password" required>
-      <button>Sign in</button>
-      <p id="login-message" role="status"></p>
-    </form>
-
-    <!-- The patient UI. patient.js fills in the title, detail and options. -->
-    <section id="app" hidden>
-      <div class="screen-text" aria-live="polite">
-        <h1 id="title">Connecting…</h1>
-        <p id="detail" class="detail"></p>
-      </div>
-
-      <!-- Progress bar on the status screen -->
-      <ol id="steps" class="steps" hidden aria-label="Request progress">
-        <li>Sent</li><li>Seen by nurse</li><li>Done</li>
-      </ol>
-
-      <div id="options" class="options"></div>
-
-      <p class="hint">Keyboard: ← → ↑ ↓ move · Enter or Space select · Esc back</p>
-      <p id="device" class="hint"></p>
-    </section>
-  </main>
+<body class="bg-calm min-h-screen font-sans text-slate-800 antialiased">
+  <div id="root"></div>
+  <script type="module" src="/src/patient/main.jsx"></script>
 </body>
 </html>

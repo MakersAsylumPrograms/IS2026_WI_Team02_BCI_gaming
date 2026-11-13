@@ -14,16 +14,17 @@ The patient can request Water, Toilet assistance, Adjust position or Call nurse.
 The nurse sees waiting requests, marks them Seen and then Done; the patient
 screen shows progress. Game and OLED features are outside the current scope.
 
-**Start:** double-click `Start-EqualCare.cmd` on Windows. First setup needs internet and Python 3.11–3.13.
+**New here?** Follow the [opening guide](OPENING-GUIDE.md), step by step.
+**Start:** double-click `Start-EqualCare.cmd` on Windows. First setup needs internet, Python 3.11–3.13 and Node.js 20+.
 **Guide:** [Setup, passwords and team guide](Code/README.md).
 **API contract:** [OpenAPI](Documentation/openapi.json).
 
 | Location | Contents |
 | --- | --- |
 | Code/backend/ | Flask + SQLite API, launcher, simulator and tests |
-| Code/frontend/ | Connected patient/staff screens and shared JavaScript/CSS |
+| Code/frontend/ | Patient and staff screens (React + Tailwind), built into `dist/` and served by the backend |
 | Code/firmware/ | ESP32-S3 EOG and joystick acquisition over USB-UART |
-| Code/acquisition/ | EOG CYCLE detection, joystick fallback, calibration and dashboard bridge |
+| Code/acquisition/ | EOG gestures (left / right / double blink), joystick, calibration and dashboard bridge |
 | Documentation/ | Original flowchart, hardware block diagram and API contract |
 | Reference_Data/ | ESP32, BioAmp, joystick and OLED supplier datasheets |
 | Electronics/, CAD/, Photos_Videos/ | Placeholders for wiring, mechanical designs and demonstration media |
@@ -32,10 +33,12 @@ The original diagrams differ: the flowchart includes game/OLED behaviour; the
 hardware block diagram describes the patient/staff workflow implemented here.
 The implementation-plan DOCX was supplied outside the repository.
 EOG is on GPIO 1; joystick X/Y/switch are GPIO 4/5/6. Both modules use 3V3.
-The latest bundled fit is provisional. At the team's request, the launcher enables
-prototype EOG navigation despite incomplete independent validation. Joystick SELECT
-chooses the highlighted item. Set allow_provisional_eog=false for strict approval gating. Physical validation is
-still required; automated checks do not establish real-person accuracy.
+Eye control (calibrated 2026-11-13 from Chords-Web recordings, IN+ left eye, IN- right eye,
+REF behind the right ear): look left = PREVIOUS, look right = NEXT, double blink = SELECT;
+the joystick does the same and always works. The calibration passed its check on the
+recordings and drives the dashboard when they are replayed; it has not yet been tried with
+electrodes on since. Physical validation is still required; automated checks do not
+establish real-person accuracy.
 
 ## Licenses
 

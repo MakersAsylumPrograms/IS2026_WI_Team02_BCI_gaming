@@ -1,13 +1,14 @@
-"""Send CYCLE commands to the EqualCare dashboard backend (Code/backend), as the EOG input device.
+"""Send eye and joystick commands to the EqualCare dashboard backend (Code/backend), as the input device.
 
 Same device contract as Code/backend/simulate_device.py and the ESP32 firmware:
   POST /api/v1/input-events  {device_id, boot_id, seq, source: 'eog', command}
   POST /api/v1/heartbeat     {device_id}         every 5 s, so the dashboard shows the device online
   Authorization: Bearer <DEVICE_TOKEN>
 
-Every eye CYCLE becomes ONE dashboard command (PREVIOUS by default: the highlighted option moves one
-step, always in the same direction, whichever way the eyes went), sent as source 'eog'. Joystick
-events are sent with their own command (NEXT / PREVIOUS / SELECT) as source 'joystick'. A command that cannot be
+Eye gestures (gestures.py) carry their own command, as source 'eog': look LEFT -> PREVIOUS, look
+RIGHT -> NEXT, double blink -> SELECT. A CYCLE from an old direction-free model becomes `command`
+(PREVIOUS by default). Joystick events are sent with their own command (NEXT / PREVIOUS / SELECT)
+as source 'joystick'. A command that cannot be
 delivered within FRESH_FOR seconds is dropped, never delivered late. Sending happens on a
 background thread, so a slow or absent backend never stalls the serial reader.
 """
@@ -84,9 +85,11 @@ class DashboardLink:
             thread.join(timeout=2)
 
     def send(self, event=None):
-        """Queue one dashboard command for a CycleEvent (eyes) or a JoystickEvent."""
+        """Queue one dashboard command for an eye event (gesture or CYCLE) or a JoystickEvent."""
         source = getattr(event, 'source', 'eog')
-        command = event.command if source == 'joystick' or getattr(event, 'command', '') == 'SELECT' else self.command
+        command = getattr(event, 'command', 'CYCLE')
+        if source == 'eog' and command == 'CYCLE':       # the direction-free command of the old CYCLE models
+            command = self.command
         if source not in ('eog', 'joystick') or command not in ('NEXT', 'PREVIOUS', 'SELECT'):
             raise ValueError('Unsupported dashboard event')
         if self._stop.is_set():

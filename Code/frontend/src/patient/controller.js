@@ -1,5 +1,4 @@
-import {REQUEST_TYPES, typeInfo, newId} from '../lib/api.js';
-import {DemoAPI} from '../lib/demoApi.js';   // DEMO: swap for EqualCareAPI when integrating
+import {EqualCareAPI, REQUEST_TYPES, typeInfo, newId} from '../lib/api.js';
 import {createInput, startDevicePolling, NEXT, PREVIOUS, SELECT, BACK} from '../lib/input.js';
 import {createStore, startPolling} from '../lib/store.js';
 import {createConnection, createSession} from '../lib/session.js';
@@ -29,7 +28,7 @@ const DEVICE_TEXT = {
 };
 
 export function createPatientApp() {
-  const api = new DemoAPI('patient');
+  const api = new EqualCareAPI('patient');
   const connection = createConnection();
   const store = createStore();
 

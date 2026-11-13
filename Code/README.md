@@ -7,11 +7,23 @@ and one combined EOG/joystick acquisition process, then opens the patient page.
 First setup uses isolated venvs and needs internet; unchanged subsequent starts work
 offline. Optional settings are in `Code/launcher-config.json` (copy the example).
 Keep the launcher open; Ctrl+C stops only its child processes. Port 8000 must be free.
-Runtime logs are local under `Code/runtime/`. At the team's request, the launcher
-enables the latest provisional EOG fit for prototype navigation. It remains unverified;
-false navigation is expected. Joystick press selects the highlighted item. Set
-`allow_provisional_eog` to false to require independent evaluation approval.
+Runtime logs are local under `Code/runtime/`. The launcher loads the eye model
+`acquisition/models/eog-gestures.json` (calibrated 2026-11-13 from Chords-Web recordings):
+look left and hold = PREVIOUS, look right and hold = NEXT, double blink = SELECT, with
+IN+ at the left eye, IN- at the right eye and REF behind the right ear. The joystick does
+the same three things and always works. Eye commands are forwarded because that model
+passed its recorded check; it has not yet been tried with electrodes on since, so do the
+two-minute check in [acquisition/README.md](acquisition/README.md) first. A local
+`Code/launcher-config.json` made before this still names the old model: update its
+`model` line from the example file. `allow_provisional_eog` forwards eye commands from a
+model that has not passed.
 The manual backend-only instructions below remain useful for diagnostics.
+
+The patient and staff screens are the React app in `Code/frontend`. The launcher builds
+them (`npm ci`, `npm run build`) when `Code/frontend/dist` is missing or older than the
+source, which needs Node.js 20+ and, the first time, internet. When starting the backend
+by hand, build them first (see [frontend/README.md](frontend/README.md)); until then the
+pages answer with "screens are not built yet" while the API works.
 
 Requires Python 3.11+; initial dependency installation needs internet.
 From the repository root in PowerShell:
@@ -106,7 +118,7 @@ Only the nurse laptop uses the network:
    Check the health URL from the nurse laptop. If unreachable, check the IP,
    firewall and hotspot/client isolation.
 
-The frontend uses the relative API_BASE `/api/v1` in shared/api.js; keep it
+The frontend uses the relative API_BASE `/api/v1` in src/lib/api.js; keep it
 same-origin. Opening the nurse URL automatically uses that laptop-hosted backend.
 If the host IP changes, update the nurse URL.
 Run one backend process; command buffers/leases are in memory. Plain HTTP and
@@ -147,15 +159,15 @@ PENDING means saved by the backend, not that the nurse has seen it.
 | backend/simulate_device.py | Hardware-free command sender and heartbeat |
 | backend/tests/test_api.py, test_http.py | API/reliability tests and real HTTP simulator test |
 | backend/tests/browser_smoke.cjs | Patient/nurse browser integration checks |
-| frontend/index.html, patient/index.html, staff/index.html | Landing page and dashboard markup |
-| frontend/shared/api.js | Shared HTTP client, API_BASE, request labels and server-clock offset |
-| frontend/shared/common.js | Sessions, polling and connection indicators |
-| frontend/shared/input.js | Keyboard/mouse/device commands; fromDevice() is the ESP32 entry point |
-| frontend/shared/patient.js | Menu, confirmation, submission, retry and status screens |
-| frontend/shared/staff.js | Request ordering, Seen/Done, waiting timers and sound alerts |
-| frontend/shared/styles.css | Shared and screen-specific styles |
+| frontend/ | React + Tailwind screens; `npm run build` writes `dist/`, which the backend serves ([frontend/README.md](frontend/README.md)) |
+| frontend/src/lib/api.js | Shared HTTP client, API_BASE, request labels and server-clock offset |
+| frontend/src/lib/session.js, store.js | Sessions, polling and connection indicators |
+| frontend/src/lib/input.js | Keyboard/mouse/device commands; fromDevice() is the ESP32 entry point |
+| frontend/src/patient/ | Menu, confirmation, submission, retry and status screens |
+| frontend/src/staff/ | Request ordering, Seen/Done, waiting timers and sound alerts |
+| frontend/src/components/, styles.css | Shared page frame and design tokens |
 | firmware/ESP32-S3/ESP32-S3.ino | ESP32-S3: EOG GPIO 1 + 3V3 joystick GPIO 4/5/6, 250 Hz USB Chords packets |
-| acquisition/ | Laptop side: eye CYCLE detection, joystick, and sending commands to the backend |
+| acquisition/ | Laptop side: eye gestures (left / right / double blink), joystick, and sending commands to the backend |
 
 Full request/response schemas: [OpenAPI](../Documentation/openapi.json).
 Browser sign-in uses a session cookie; writes require X-CSRF-Token. One cookie can
@@ -214,8 +226,9 @@ confirmation/cancel, offline recovery and device-only navigation.
 
 Device path: BioAmp EXG Pill v3 (GPIO 1) and joystick (GPIO 4/5/6) -> ESP32-S3 running
 `firmware/ESP32-S3` (Chords protocol, 250 Hz) -> USB-to-UART -> `acquisition/` on the
-patient laptop. A held look to either side is one eye CYCLE (PREVIOUS, source `eog`); joystick
-pushes are NEXT/PREVIOUS and its press is SELECT (source `joystick`). One gesture = one command;
+patient laptop. A held look left is PREVIOUS, a held look right is NEXT and a double blink is
+SELECT (source `eog`); joystick pushes are NEXT/PREVIOUS and its press is SELECT (source
+`joystick`). One gesture = one command;
 analog samples never leave the laptop. Run `python -m eog_acquisition run --dashboard` from
 `acquisition/`; see [acquisition/README.md](acquisition/README.md). The backend does not process
 raw signals.

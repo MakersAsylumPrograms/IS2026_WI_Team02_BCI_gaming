@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
@@ -13,9 +14,11 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 CODE = ROOT / 'Code'
+# The gesture model carries its own passed evaluation, so eye commands reach the dashboard without
+# the provisional override. Set allow_provisional_eog only to try a model that has not passed.
 DEFAULTS = dict(port='COM7', server='http://127.0.0.1:8000',
-                model='Code/acquisition/models/cycle-latest-provisional.json', plot=True,
-                open_browser=True, allow_provisional_eog=True)
+                model='Code/acquisition/models/eog-gestures.json', plot=True,
+                open_browser=True, allow_provisional_eog=False)
 
 
 def config():
@@ -45,6 +48,31 @@ def environment(folder):
         subprocess.run([str(python), '-m', 'pip', 'install', '-r', str(requirements)], check=True)
         marker.write_bytes(expected)
     return python
+
+
+def screens(folder):
+    """Build the React screens (Code/frontend -> dist) when they are missing or older than their source."""
+    built = folder / 'dist' / 'index.html'
+    sources = [folder / name for name in ('package.json', 'package-lock.json', 'vite.config.js', 'index.html')]
+    sources += [p for part in ('src', 'public', 'patient', 'staff') for p in (folder / part).rglob('*') if p.is_file()]
+    if built.exists() and built.stat().st_mtime >= max(p.stat().st_mtime for p in sources):
+        return
+    npm = shutil.which('npm')
+    if npm is None:
+        if not built.exists():
+            raise RuntimeError('The screens are not built and Node.js is not installed. Install Node.js 20 or '
+                               'newer from nodejs.org, then start again.')
+        print('[setup] The screens are older than their source and Node.js is not installed; '
+              'using the existing build.', flush=True)
+        return
+    lock = (folder / 'package-lock.json').read_bytes()
+    marker = folder / 'node_modules' / 'equalcare-package-lock.json'
+    if not marker.exists() or marker.read_bytes() != lock:
+        print('[setup] Installing screen dependencies; first setup needs internet.', flush=True)
+        subprocess.run([npm, 'ci', '--no-audit', '--no-fund'], cwd=folder, check=True)
+        marker.write_bytes(lock)
+    print('[setup] Building the patient and staff screens', flush=True)
+    subprocess.run([npm, 'run', 'build'], cwd=folder, check=True)
 
 
 def occupied():
@@ -105,6 +133,7 @@ def main():
             raise RuntimeError('Port 8000 is already occupied. Close the previous backend/launcher first; no existing process was stopped.')
         backend_python = environment(CODE / 'backend')
         acquisition_python = environment(CODE / 'acquisition')
+        screens(CODE / 'frontend')
         runtime = CODE / 'runtime'
         runtime.mkdir(exist_ok=True)
         log_path = runtime / time.strftime('session-%Y%m%d-%H%M%S.log')

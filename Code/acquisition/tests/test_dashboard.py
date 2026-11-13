@@ -90,6 +90,64 @@ def test_joystick_events_keep_their_own_command_and_source(backend):
                                                              ('PREVIOUS', 'eog')]
 
 
+def test_eye_gestures_reach_the_patient_screen_with_their_own_commands(backend):
+    from eog_acquisition.gestures import GestureEvent
+    app, url = backend
+    _, poll = patient_screen(app)
+    first = poll()
+    link = DashboardLink(url, device_id='esp32-01', token='device-test', command='NEXT', say=print).start()
+    try:
+        for command, gesture in (('PREVIOUS', 'LEFT'), ('NEXT', 'RIGHT'), ('SELECT', 'DOUBLE_BLINK')):
+            link.send(GestureEvent(command, gesture, 100, 50, 0.0, 0.8))
+        assert wait_for(lambda: link.sent == 3)
+        events = poll(first)['events']
+    finally:
+        link.stop()
+    assert [(e['command'], e['source']) for e in events] == [('PREVIOUS', 'eog'), ('NEXT', 'eog'), ('SELECT', 'eog')]
+
+
+def test_replaying_a_chords_recording_drives_the_patient_screen(backend, capsys, monkeypatch):
+    """The team model on the 2nd calibration recording, through the CLI, DashboardLink and the real backend."""
+    from eog_acquisition import cli, gestures
+    recording = (Path(__file__).resolve().parents[1] / 'data' / 'recordings'
+                 / 'Fresh Calibration Recording Through Chords' / '2nd one - better.csv')
+    if not recording.exists() or not gestures.DEFAULT_MODEL.exists():
+        pytest.skip('the Chords-Web calibration recordings or the team model are not here')
+    app, url = backend
+    _, poll = patient_screen(app)
+    monkeypatch.setenv('EQUALCARE_DEVICE_ID', 'esp32-01')
+    monkeypatch.setenv('EQUALCARE_DEVICE_TOKEN', 'device-test')
+    state, seen, done = poll(), [], threading.Event()
+
+    def screen():                                    # what the patient page does: poll, act on each command
+        nonlocal state
+        while not done.is_set():
+            state = poll(state)
+            seen.extend(e['command'] for e in state['events'])
+            time.sleep(0.02)
+    watcher = threading.Thread(target=screen, daemon=True)
+    watcher.start()
+    try:
+        assert cli.main(['replay-chords', str(recording), '--dashboard', '--server', url, '--speed', '40']) == 0
+        assert wait_for(lambda: len(seen) == 17)
+    finally:
+        done.set()
+        watcher.join(timeout=2)
+    left_right = ['PREVIOUS', 'NEXT']
+    assert seen == left_right * 3 + ['SELECT'] * 5 + left_right * 2 + ['SELECT'] * 2
+    assert '17 sent, 0 dropped' in capsys.readouterr().out
+
+
+def test_run_uses_the_approved_team_gesture_model_by_default():
+    from eog_acquisition import cli, gestures
+    if not gestures.DEFAULT_MODEL.exists():
+        pytest.skip('the team model is not here')
+    parser_default = cli.load_model(gestures.DEFAULT_MODEL)
+    assert isinstance(parser_default, gestures.GestureModel) and cli.dashboard_approved(parser_default)
+    with pytest.raises(ValueError):
+        cli.cycle_model(gestures.DEFAULT_MODEL)       # evaluate / replay are for CYCLE models
+
+
 def test_wrong_token_is_reported_and_not_retried(backend):
     _, url = backend
     messages = []
