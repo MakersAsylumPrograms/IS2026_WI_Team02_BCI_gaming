@@ -75,3 +75,7 @@ Code/launcher-config.json
 # ...except results the team chose to share (the *.csv rule above would hide the recordings)
 !Code/acquisition/hardware-tests/**/*.csv
 !Code/acquisition/data/**/*.csv
+
+# React + Tailwind design demo (standalone; run with: cd Code/frontend-react-demo; npm install; npm run dev)
+Code/frontend-react-demo/node_modules/
+Code/frontend-react-demo/dist/

@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+/* EqualCare design tokens.
+   Calm, clinical-but-warm: mint/teal brand on a soft white background,
+   with status colours used consistently on every screen:
+     amber = waiting · rose = overdue · sky = in progress · emerald = done */
+@theme {
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --animate-rise: rise 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-toast-in: toast-in 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-glow: glow 1.6s ease-in-out infinite;
+  --animate-breathe: breathe 2.6s ease-in-out infinite;
+  --animate-ring: ring 1.1s ease-in-out 2;
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(-18px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(20 184 166 / 0); }
+    50% { box-shadow: 0 0 0 10px rgb(20 184 166 / 0.18); }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.55; }
+    50% { transform: scale(1.18); opacity: 0.12; }
+  }
+  @keyframes ring {
+    0%, 100% { transform: rotate(0); }
+    20% { transform: rotate(-14deg); }
+    40% { transform: rotate(12deg); }
+    60% { transform: rotate(-8deg); }
+    80% { transform: rotate(4deg); }
+  }
+}
+
+/* Soft mint wash behind every page. */
+@utility bg-calm {
+  background-color: #f3f8f6;
+  background-image:
+    radial-gradient(56rem 38rem at 108% -12%, rgb(204 251 241 / 0.7), transparent 62%),
+    radial-gradient(48rem 34rem at -12% 112%, rgb(220 252 231 / 0.75), transparent 60%);
+  background-attachment: fixed;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    font-feature-settings: "ss01", "cv11";
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-teal-500);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--color-teal-100);
+    color: var(--color-teal-950);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
