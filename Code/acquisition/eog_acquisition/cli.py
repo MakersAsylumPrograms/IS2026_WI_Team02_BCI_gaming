@@ -1,6 +1,7 @@
 """Command line: python -m eog_acquisition <command> --help"""
 import argparse
 import json
+import os
 import signal
 import sys
 import threading
@@ -11,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from . import chords_calibration, cycle, gestures
+from .ble import BLEEOGDevice, is_ble_port
 from .cycle import (DEFAULT_MODEL, MIN_RECALL, CalibrationError, CycleDetector, calibrate, detect, save_model, score,
                     evaluate_model)
 from .dashboard import COMMANDS, DEFAULT_SERVER, DashboardLink
@@ -71,7 +73,10 @@ class Live:
         self.pipeline = pipeline
         self.alive = threading.Event()
         self.alive.set()
-        self.device = EOGDevice(port, on_status=self._status)
+        if is_ble_port(port):          # --port BLE: the board on a battery, over Bluetooth
+            self.device = BLEEOGDevice(port, on_status=self._status)
+        else:
+            self.device = EOGDevice(port, on_status=self._status)
         self._warned = set()
         signal.signal(signal.SIGINT, lambda *_: self.alive.clear())
 
@@ -532,6 +537,97 @@ def cmd_replay(args):
     return 0
 
 
+def cmd_blink_test(args):
+    """Double-blink test: the terminal asks for a double blink again and again and says if each one was caught."""
+    from .session import _tone
+    print('[1/3] Loading the eye model...', flush=True)
+    model = load_model(args.model)
+    if not isinstance(model, GestureModel):
+        raise ValueError(f'{Path(args.model).name} is not a gesture model.')
+    path = Path(args.out or DATA / 'recordings' / f'blink-test-{stamp()}')
+    recorder = Recorder(path, port=args.port, in_plus=args.in_plus, notes='double-blink test',
+                        protocol=dict(trials=args.trials, window_seconds=args.window, rest_seconds=args.rest))
+    pipeline = Pipeline(detector=GestureDetector(model), recorder=recorder)
+    events = []                                       # (time.monotonic(), event): the reader thread adds them
+    pipeline.on_event(lambda event: events.append((time.monotonic(), event)))
+    live = Live(args.port, pipeline)
+    results, extra = [], []
+    say = lambda text='': print(text, flush=True)              # noqa: E731  plain lines, no screen clearing
+
+    def wait(seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if not live.keep_going():
+                return False
+            time.sleep(0.05)
+        return True
+
+    def guide():
+        say('=' * 66)
+        say(f' DOUBLE-BLINK TEST, {args.trials} times.')
+        say(' At ">>> DOUBLE BLINK <<<" (and a beep): blink twice, firmly, about half a')
+        say(' second apart. Otherwise relax and look at the screen. Ctrl+C stops early.')
+        say('=' * 66)
+        say(f' Warming up for {model.warmup:g} s, keep still...')
+        if not wait(model.warmup):
+            return
+        seen = 0
+        for trial in range(1, args.trials + 1):
+            pipeline.set_label('REST', 0)
+            say(f'\n Trial {trial}/{args.trials}: relax...')
+            if not wait(args.rest):
+                return
+            extra.extend(e for _, e in events[seen:] if e.source == 'eog')   # anything while resting
+            seen = len(events)
+            pipeline.set_label('DOUBLE_BLINK', trial)
+            _tone('DOUBLE_BLINK')
+            say('   >>> DOUBLE BLINK <<<')
+            if not wait(args.window):
+                return
+            pipeline.set_label('REST', 0)
+            if not wait(0.5):                                     # the SELECT comes a moment after the 2nd blink
+                return
+            got = [e for _, e in events[seen:] if e.source == 'eog']
+            seen = len(events)
+            caught = any(e.command == 'SELECT' for e in got)
+            results.append(caught)
+            others = [e.direction for e in got if e.command != 'SELECT']
+            say(f'   {"CAUGHT  -> SELECT" if caught else "missed"}'
+                + (f'   (also seen as: {", ".join(others)})' if others else '')
+                + f'      [{sum(results)}/{len(results)} so far]')
+            _tone('CENTER' if caught else 'REST')
+        pipeline.set_label('END', 0)
+        live.alive.clear()
+
+    try:
+        say(f'[2/3] Connecting to the board on {args.port} (close EqualCare, Chords-Web, the Arduino '
+            'Serial Monitor and any phone app connected to it first)...')
+        live.start()
+        say('[3/3] Board connected, streaming.')
+        worker = threading.Thread(target=guide, daemon=True)
+        worker.start()
+        if args.plot:
+            from .viewer import LiveView
+            LiveView(pipeline, SAMPLE_RATE, lambda: status_line(pipeline.health.snapshot(), live.device.decoder)
+                     ).run(live.keep_going)
+            live.alive.clear()
+        else:
+            live.wait(quiet=True)
+        worker.join(timeout=2)
+    finally:
+        stats = live.finish()
+        recorder.close(dict(health=pipeline.health.snapshot(), firmware_stats=stats,
+                            results=results, extra_commands=[e.direction for e in extra]))
+    print('\n' + '=' * 66)
+    if results:
+        print(f' Double blinks caught: {sum(results)} of {len(results)} ({100 * sum(results) / len(results):.0f}%)')
+        print(' Per trial: ' + ' '.join('Y' if r else '-' for r in results))
+    print(f' Eye commands while relaxing (should be none): {len(extra)}'
+          + (f'  {", ".join(e.direction for e in extra)}' if extra else ''))
+    print(f' Recording saved: {recorder.path}  (send it in to tune the blink settings)')
+    return 0
+
+
 def print_gesture_score(name, s):
     print(f"  {name}: {s['look_hits']}/{s['looks']} cued looks gave the right command, "
           f"{s['wrong_direction']} the wrong one; {s['select_hits']}/{s['double_blinks']} cued double blinks "
@@ -545,7 +641,8 @@ def cmd_calibrate_chords(args):
     model, report = chords_calibration.calibrate(recordings)
     out = gestures.save_model(model, args.out, report)
     print(f'Look = pulse over {model.look_peak} for at least {model.look_width} s that stays '
-          f'(level {model.tail}); blink spike over {model.blink_peak}. Chords-Web units, 1.0 = 2,048 counts.')
+          f'(level {model.tail}); a blink rises at least {model.blink_rise} from just before it. '
+          'Chords-Web units, 1.0 = 2,048 counts.')
     print('Each recording scored with thresholds fitted WITHOUT it (the honest numbers):')
     for s in report['held_out']:
         print_gesture_score(s['recording'], s)
@@ -597,7 +694,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='subcommand', required=True)  # 'command' is run's --command option
 
     def device_args(p, in_plus=True):
-        p.add_argument('--port', default=DEFAULT_PORT, help=f'serial port (default {DEFAULT_PORT})')
+        p.add_argument('--port', default=DEFAULT_PORT,
+                       help=f'serial port (default {DEFAULT_PORT}), or BLE for the board on Bluetooth')
         if in_plus:
             p.add_argument('--in-plus', choices=('left', 'right', 'unknown'), default='unknown',
                            help='which outer eye corner the IN+ electrode is on (saved in the metadata)')
@@ -649,6 +747,16 @@ def main(argv=None):
     p.add_argument('recordings', nargs='+', help='Chords-Web CSV recordings (Counter,Channel1) of the calibration sequence')
     p.add_argument('--out', default=str(gestures.DEFAULT_MODEL), help='model path (default: the team gesture model)')
     p.set_defaults(func=cmd_calibrate_chords)
+
+    p = sub.add_parser('blink-test', help=cmd_blink_test.__doc__)
+    device_args(p)
+    p.add_argument('--trials', type=int, default=10, help='how many double blinks to ask for (default 10)')
+    p.add_argument('--window', type=float, default=2.5, help='seconds to do each double blink (default 2.5)')
+    p.add_argument('--rest', type=float, default=1.5, help='seconds of rest between prompts (default 1.5)')
+    p.add_argument('--model', default=str(gestures.DEFAULT_MODEL))
+    p.add_argument('--out', help='recording path (default data/recordings/blink-test-<time>)')
+    p.add_argument('--plot', action='store_true', help='also show the live signal plot')
+    p.set_defaults(func=cmd_blink_test)
 
     p = sub.add_parser('replay-chords', help=cmd_replay_chords.__doc__)
     p.add_argument('recording', help='Chords-Web CSV recording')

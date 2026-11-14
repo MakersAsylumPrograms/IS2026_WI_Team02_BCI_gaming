@@ -100,6 +100,22 @@ def test_two_blinks_select_and_single_blinks_do_nothing():
     assert commands(pill([(14, 0)], blinks=[(5, 2500, 0.25), (7, 2500, 0.25), (9, 2500, 0.25)])) == []
 
 
+def test_second_blink_starting_deep_in_the_first_ones_rebound_still_counts():
+    """The live failure: the second blink rises from the first one's rebound, so above zero it is small."""
+    from eog_acquisition.gestures import BlinkPairs
+    trace = np.zeros(int(4 * FS))
+    shape = lambda n, size: size * np.sin(np.linspace(0, np.pi, n))           # noqa: E731
+    first, second = int(1.0 * FS), int(1.4 * FS)
+    trace[first:first + 30] += shape(30, 0.75)                                 # spike to +0.75 ...
+    trace[first + 30:first + 110] -= shape(80, 0.55)                           # ... rebound to -0.55
+    trace[second:second + 30] += shape(30, 0.8)                                # second rises 0.8 but peaks ~+0.3
+    trace[second + 30:second + 110] -= shape(80, 0.5)
+    pairs = BlinkPairs(MODEL)
+    found = [i for i, v in enumerate(trace) if pairs.step(float(v), i, i)]
+    assert len(found) == 1 and 1.4 * FS < found[0] < 2.2 * FS
+    assert trace[second:second + 30].max() < MODEL.blink_peak                   # the old rule would reject it
+
+
 def test_small_movements_quick_glances_and_a_blink_during_a_look_are_not_extra_commands():
     assert commands(pill([(5, 0), (1, 1200), (4, 0)], ramp=0.04)) == []       # an ordinary small eye movement
     assert commands(pill([(5, 0), (0.3, 2800), (5, 0)])) == []                # there and straight back: not held
@@ -170,7 +186,7 @@ def test_team_model_on_the_calibration_recordings(team):
     scores = [chords_calibration.score(r, chords_calibration.detect(r, model)) for r in recordings]
     assert [s['look_hits'] for s in scores] == [9, 10, 10]      # of 10 each; recording 1 has no last look in it
     assert scores[0]['missed_looks'] == [184]
-    assert [s['select_hits'] for s in scores] == [2, 7, 5]      # of 8 each; the rest have one blink or none
+    assert [s['select_hits'] for s in scores] == [3, 7, 5]      # of 8 each; the rest have one blink or none
     total = chords_calibration.total(scores)
     assert total['wrong_direction'] == total['false_moves'] == total['false_selects'] == 0
 
@@ -187,7 +203,7 @@ def test_a_recording_replays_as_the_cue_sheets_commands(team):
 def test_calibration_checks_each_recording_with_a_fit_made_without_it(team, monkeypatch):
     _, recordings = team
     monkeypatch.setattr(chords_calibration, 'GRID', dict(look_peak=(0.5,), look_width=(0.12, 0.18), tail=(0.04,),
-                                                         blink_peak=(0.45,)))
+                                                         blink_rise=(0.4,)))
     model, report = chords_calibration.calibrate(recordings)
     assert model.look_width == 0.18                              # 0.12 lets ordinary eye movements through
     assert [h['recording'] for h in report['held_out']] == [r.name for r in recordings]

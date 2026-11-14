@@ -57,13 +57,24 @@ class GestureModel:
     # Looks: the movements that are commands (calibrated)
     look_peak: float = 0.5       # a look's pulse is at least this tall ...
     look_width: float = 0.18     # ... and beyond `onset` for at least this long (s)
-    # Blinks: a spike whose opposite swing is deep and dies away (calibrated)
-    blink_peak: float = 0.45     # a blink's spike is at least this tall
+    # Blinks, as the look detector sees them: a spike whose opposite swing is deep and dies away.
+    # These only keep blinks from counting as looks; SELECT comes from the blink_* rules below.
+    blink_peak: float = 0.45     # a spike this tall with such a swing is a blink, not a movement
     rebound: float = 0.25        # the swing after it is at least this deep ...
     rebound_ratio: float = 0.3   # ... and at least this share of the spike ...
     recover: float = 0.5         # ... and less than this share of it is left at the end of the watch
     rebound_max: float = 1.5     # a swing bigger than this many spikes is a movement of its own
-    double_min: float = 0.2      # s between the starts of the two blinks of a double blink
+    # Double blink -> SELECT (calibrated). Each blink is measured as a rise from the lowest point
+    # just before it, because the second blink of a pair starts deep in the first one's rebound.
+    blink_rise: float = 0.4      # rise from the low point in the last `blink_window` s to the peak
+    blink_window: float = 0.25   # s
+    blink_fall: float = 0.7      # then it falls by at least this share of that rise ...
+    blink_fall_within: float = 0.4   # ... reaching its trough within this many s of the peak (firm blinks
+                                     #     clip the ADC and fall slower: 0.3-0.44 s in the 2026-11-14 tests) ...
+    blink_recover: float = 0.05  # ... and comes back up by this share of the fall ...
+    blink_recover_within: float = 0.45   # ... within this many s of the trough
+    blink_turn: float = 0.12     # change that marks a peak or trough as passed
+    double_min: float = 0.2      # s between the peaks of the two blinks of a double blink
     double_max: float = 0.85
     select_cooldown: float = 1.0  # s after a SELECT in which blinks are ignored
     # Safety
@@ -114,6 +125,73 @@ def dashboard_approved(model):
     return validation.get('passed') is True and validation.get('model_id') == model_id(model)
 
 
+class BlinkPairs:
+    """Two blinks in a row -> SELECT, from the turning points of the signal.
+
+    A blink is a quick rise of at least `blink_rise` from the lowest point in the `blink_window`
+    before its peak, then a fall of at least `blink_fall` of that rise within `blink_fall_within`,
+    then a recovery from that trough. Measuring the rise from the low point (not from zero) is what
+    lets the second blink count: it starts while the signal is still deep in the first blink's
+    rebound, so its peak above zero is small even though the eyelid moved just as much. A look has
+    no quick fall and recovery after its pulse, so it is not a blink. step() returns
+    (index of the first blink's peak, second blink's peak) for a pair, else None.
+    """
+
+    def __init__(self, model):
+        m, fs = model, model.sample_rate
+        self.sign, self.rise, self.fall, self.turn = m.blink_polarity, m.blink_rise, m.blink_fall, m.blink_turn
+        self.recover = m.blink_recover
+        self.window, self.fall_within = int(m.blink_window * fs), int(m.blink_fall_within * fs)
+        self.recover_within = int(m.blink_recover_within * fs)
+        self.pair_min, self.pair_max = m.double_min * fs, m.double_max * fs
+        self.cooldown_samples = int(m.select_cooldown * fs)
+        self.reset()
+
+    def reset(self):
+        self._recent = deque(maxlen=self.window + 2 * self.fall_within + 2)   # (n, value) for the low point
+        self._rising, self._extreme, self._peak = True, None, None
+        self._candidate = self._last = None
+        self._cooldown = -1
+
+    def step(self, value, n, index):
+        x = value * self.sign
+        self._recent.append((n, x))
+        if self._extreme is None:
+            self._extreme = (n, x, index)
+        en, ev, ei = self._extreme
+        if self._rising:
+            if x > ev:
+                self._extreme = (n, x, index)
+            elif ev - x >= self.turn:                         # a peak has passed
+                low = min((v for k, v in self._recent if en - self.window <= k <= en), default=ev)  # slow crest: no blink
+                self._peak = (en, ev, ei, ev - low)
+                self._rising, self._extreme = False, (n, x, index)
+        else:
+            if x < ev:
+                self._extreme = (n, x, index)
+            elif x - ev >= self.turn:                         # a trough has passed
+                if self._peak:
+                    pn, pv, pi, rise = self._peak
+                    drop = pv - ev
+                    if rise >= self.rise and en - pn <= self.fall_within and drop >= self.fall * rise:
+                        self._candidate = (pn, pv, pi, en, ev, drop)
+                self._peak = None
+                self._rising, self._extreme = True, (n, x, index)
+        if self._candidate:                                   # a blink, once it comes back up
+            pn, pv, pi, tn, tv, drop = self._candidate
+            if x - tv >= self.recover * drop:
+                self._candidate = None
+                if n >= self._cooldown:
+                    if self._last and self.pair_min <= pn - self._last[0] <= self.pair_max:
+                        first, self._last = self._last, None
+                        self._cooldown = n + self.cooldown_samples
+                        return first[1], pv
+                    self._last = (pn, pi)
+            elif n - tn > self.recover_within:
+                self._candidate = None
+        return None
+
+
 @dataclass(frozen=True)
 class GestureEvent:
     command: str        # dashboard command: PREVIOUS, NEXT or SELECT
@@ -141,12 +219,15 @@ class GestureDetector:
             'max_pulse', 'confirm', 'tail_from', 'away_timeout', 'select_cooldown', 'settle', 'warmup')}
         self._recent = int(0.5 * fs)       # saturation check window
         self._clipped = deque()
+        self.blinks = BlinkPairs(m)
         self.reset()
 
     def reset(self):
         """Discontinuity or start: forget everything and warm up again."""
         self.filter.reset()
         self._clipped.clear()
+        self.blinks.reset()
+        self._looks_from = 0         # no look commands before this sample (just after a SELECT)
         self._n = 0
         self.state = 'idle'
         self.value = 0.0
@@ -163,6 +244,16 @@ class GestureDetector:
         self._n += 1
         self.value = value
         events = self._follow(value, n, index, host_time, clipped)
+        pair = self.blinks.step(value, n, index)
+        # Not gated by the look detector's 'unsettled' state: firm blinks clip the ADC enough to trip it,
+        # and a pinned or loose electrode cannot make BlinkPairs' quick fall-and-recover twice in a row.
+        if pair:
+            first_index, peak = pair
+            events = [GestureEvent(COMMANDS['DOUBLE_BLINK'], 'DOUBLE_BLINK', index, first_index, host_time,
+                                   round(peak * self.model.blink_polarity, 3))]
+            self._looks_from = n + self._samples['select_cooldown']
+        elif events and n < self._looks_from:
+            events = []                               # the end of a double blink is not a look
         # Warm-up: movements are followed (so a look back to the centre afterwards is known as one),
         # but nothing is a command yet.
         return events if n >= self._samples['warmup'] else []
@@ -249,15 +340,8 @@ class GestureDetector:
         self.state, self._quiet, self.gaze, self._last_blink = 'unsettled', 0, 0, None
 
     def _blink(self, n, index, host_time):
-        m, spike = self.model, self._pulse
-        if spike['sign'] != m.blink_polarity or spike['peak'] < m.blink_peak or n < self._cooldown:
-            return []
-        first, self._last_blink = self._last_blink, spike
-        if first is None or not m.double_min <= (spike['start'] - first['start']) / m.sample_rate <= m.double_max:
-            return []
-        self._last_blink, self._cooldown = None, n + self._samples['select_cooldown']
-        return [GestureEvent(COMMANDS['DOUBLE_BLINK'], 'DOUBLE_BLINK', index, first['start_index'], host_time,
-                             round(spike['peak'] * spike['sign'], 3))]
+        """A spike with its rebound: never a look. SELECT is decided by BlinkPairs."""
+        return []
 
     def _movement(self, n, index, host_time):
         """The eyes moved and stayed: a look, the way back from one, or a movement too small to be a command."""

@@ -76,6 +76,38 @@ the middle of the tied settings): pulse height 0.5, pulse width 0.18 s, level le
 blink spike 0.45 (Chords-Web units; 1.0 = 2,048 counts). The other values were set from the
 shapes in the recordings and are listed in the model file.
 
+**Update 2026-11-14: double blink.** In live use only 1–2 of 10 double blinks gave SELECT. The
+second blink of a pair starts while the signal is still deep in the first blink's rebound
+(around −0.5), so above zero it peaks at only +0.2 to +0.5, under the 0.45 a blink needed. The
+12 Nov raw sessions, which go through the same live path, show the same failure (1/20 and 0/20).
+Blinks are now measured as a rise from the lowest point in the 0.25 s before the peak (≥ 0.4),
+followed by a quick fall (≥ 70% of the rise within 0.3 s) and a recovery
+(`gestures.BlinkPairs`); two within 0.2–0.85 s are SELECT. Results with the regenerated model:
+
+| Data | Double blinks → SELECT before | After | SELECTs not asked for |
+| --- | --- | --- | --- |
+| Chords recordings (held-out check) | 14/24 | 15/24 | 0 |
+| Raw 12 Nov session 170710 | 1/20 | 9/20 | 3 (1 at rest, 2 in free viewing) |
+| Raw 12 Nov session 125337 | 0/20 | 3/20 | 4 in 2 min of free viewing |
+
+Looks are unchanged (29/30). No live recording of today's setup was available to tune on.
+
+**Update 2026-11-14, after four live blink tests** (`blink-test-20261114-*.csv`, 10 prompted double
+blinks each, `Blink-Test.cmd`). Firm blinks clip the ADC and fall more slowly (0.30–0.44 s), and
+clip enough to trip the rail check, which blocked SELECT. Changes: `blink_fall_within` 0.3 → 0.4 s,
+`blink_recover` 0.15 → 0.05, SELECT no longer gated by the rail check, and no LEFT/RIGHT for 1 s
+after a SELECT.
+
+| Data | Live, before | Now (replayed) |
+| --- | --- | --- |
+| Blink tests, prompted double blinks | 23/40 | 32/40 (9, 9, 7, 7) |
+| Blink tests, SELECT while relaxing | 0 | 0 |
+| Chords recordings | 15/24, 0 false | 15/24, 0 false |
+| 12 Nov raw sessions, free viewing | 6 false SELECTs | 11 false SELECTs (~4 min, noisy session) |
+
+The remaining misses: two blinks merged into one squeeze, a first blink before the prompt, or a
+second blink too weak. False SELECTs in free viewing on today's setup are still unmeasured.
+
 Each recording scored with thresholds fitted on the other two:
 
 | Recording | Looks → right command | Wrong direction | Double blinks → SELECT | False commands |

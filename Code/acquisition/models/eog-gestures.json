@@ -21,6 +21,13 @@
   "rebound_ratio": 0.3,
   "recover": 0.5,
   "rebound_max": 1.5,
+  "blink_rise": 0.4,
+  "blink_window": 0.25,
+  "blink_fall": 0.7,
+  "blink_fall_within": 0.4,
+  "blink_recover": 0.05,
+  "blink_recover_within": 0.45,
+  "blink_turn": 0.12,
   "double_min": 0.2,
   "double_max": 0.85,
   "select_cooldown": 1.0,
@@ -36,19 +43,19 @@
       "false_commands_per_minute": 1.0,
       "false_selects": 0
     },
-    "model_id": "befacc67a1f5daec22aa4ab67eddc88e40c5fce443d7a1127ca5dcc5f8ba7802",
+    "model_id": "b80b973562df944714a28530357fb47b310ca010700d2ace9ce9b21208dec928",
     "metrics": {
       "looks": 30,
       "look_hits": 29,
       "wrong_direction": 0,
       "double_blinks": 24,
-      "select_hits": 14,
+      "select_hits": 15,
       "false_moves": 0,
       "false_selects": 0,
       "minutes": 12.52,
       "look_recall": 0.967,
       "look_precision": 1.0,
-      "select_recall": 0.583,
+      "select_recall": 0.625,
       "false_commands_per_minute": 0.0
     }
   },
@@ -98,13 +105,13 @@
         0.04,
         0.08
       ],
-      "blink_peak": [
+      "blink_rise": [
         0.35,
-        0.45,
-        0.55
+        0.4,
+        0.5
       ]
     },
-    "tied_settings": 18,
+    "tied_settings": 9,
     "held_out": [
       {
         "recording": "1st one",
@@ -112,7 +119,7 @@
           "look_peak": 0.5,
           "look_width": 0.18,
           "tail": 0.04,
-          "blink_peak": 0.35
+          "blink_rise": 0.4
         },
         "looks": 10,
         "look_hits": 9,
@@ -121,11 +128,10 @@
           184
         ],
         "double_blinks": 8,
-        "select_hits": 2,
+        "select_hits": 3,
         "missed_double_blinks": [
           105,
           110,
-          115,
           120,
           212,
           217
@@ -138,10 +144,10 @@
       {
         "recording": "2nd one - better",
         "fitted_without_it": {
-          "look_peak": 0.5,
+          "look_peak": 0.55,
           "look_width": 0.18,
           "tail": 0.04,
-          "blink_peak": 0.35
+          "blink_rise": 0.4
         },
         "looks": 10,
         "look_hits": 10,
@@ -163,7 +169,7 @@
           "look_peak": 0.5,
           "look_width": 0.18,
           "tail": 0.04,
-          "blink_peak": 0.45
+          "blink_rise": 0.4
         },
         "looks": 10,
         "look_hits": 10,
@@ -187,13 +193,13 @@
       "look_hits": 29,
       "wrong_direction": 0,
       "double_blinks": 24,
-      "select_hits": 14,
+      "select_hits": 15,
       "false_moves": 0,
       "false_selects": 0,
       "minutes": 12.52,
       "look_recall": 0.967,
       "look_precision": 1.0,
-      "select_recall": 0.583,
+      "select_recall": 0.625,
       "false_commands_per_minute": 0.0
     },
     "in_sample": [
@@ -206,11 +212,10 @@
           184
         ],
         "double_blinks": 8,
-        "select_hits": 2,
+        "select_hits": 3,
         "missed_double_blinks": [
           105,
           110,
-          115,
           120,
           212,
           217
@@ -260,13 +265,13 @@
       "look_hits": 29,
       "wrong_direction": 0,
       "double_blinks": 24,
-      "select_hits": 14,
+      "select_hits": 15,
       "false_moves": 0,
       "false_selects": 0,
       "minutes": 12.52,
       "look_recall": 0.967,
       "look_precision": 1.0,
-      "select_recall": 0.583,
+      "select_recall": 0.625,
       "false_commands_per_minute": 0.0
     }
   }

@@ -36,7 +36,7 @@ BLINK_EARLY = 1.0                   # s a double blink may start before its cue 
 # What "works" means here, checked on recordings the thresholds were NOT fitted on:
 CRITERIA = dict(look_recall=0.9, look_precision=0.9, false_commands_per_minute=1.0, false_selects=0)
 GRID = dict(look_peak=(0.45, 0.5, 0.55, 0.6), look_width=(0.16, 0.18, 0.2, 0.22), tail=(0.0, 0.04, 0.08),
-            blink_peak=(0.35, 0.45, 0.55))
+            blink_rise=(0.35, 0.4, 0.5))
 
 
 @dataclass
