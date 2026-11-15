@@ -1,0 +1,58 @@
+WEBVTT
+
+00:00.000 --> 00:04.000
+Some patients can't speak, or even press a call button.
+
+00:06.000 --> 00:08.000
+Equal Care lets them ask for help with their eyes.
+
+00:08.000 --> 00:10.000
+Look left, right, up or down.
+
+00:10.000 --> 00:14.000
+One movement makes one selection.
+
+00:18.000 --> 00:22.000
+Inside a 145 × 110 × 38 mm enclosure with 2.8 mm walls,
+
+00:22.000 --> 00:26.000
+gel electrodes, a BioAmp Pill, an ESP32 and a battery pack.
+
+00:26.000 --> 00:32.000
+Click any part to see its name and what it does.
+
+00:32.000 --> 00:36.000
+Electrodes pick up the eye's electrical signal, called EOG.
+
+00:36.000 --> 00:38.000
+The BioAmp Pill amplifies it.
+
+00:38.000 --> 00:44.000
+The ESP32 sends the request over Wi-Fi to the staff dashboard.
+
+00:44.000 --> 00:48.000
+We calibrated it on real EOG recordings:
+
+00:48.000 --> 00:54.000
+raw signal, filtered signal and the direction of each movement.
+
+00:54.000 --> 00:58.000
+Here's a full request.
+
+00:58.000 --> 01:00.000
+The patient looks left to ask for water.
+
+01:00.000 --> 01:04.000
+It appears on the staff dashboard with a live timer.
+
+01:04.000 --> 01:10.000
+Staff acknowledge it, then resolve it.
+
+01:10.000 --> 01:14.000
+And the patient sees that help is coming.
+
+01:16.000 --> 01:20.000
+Equal Care.
+
+01:20.000 --> 01:26.000
+Built by OptiSync: Aarush, Kanika, Jiyaan and Avaneesh.

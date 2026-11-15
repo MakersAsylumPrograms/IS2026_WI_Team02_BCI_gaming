@@ -1,0 +1,2080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EqualCare: ask for help with a glance</title>
+<meta name="description" content="EqualCare is an eye-controlled (EOG) patient assistance system. Gel electrodes and a BioAmp Pill read eye movements; an ESP32 sends the request over Wi-Fi to a staff dashboard that tracks it until it is resolved.">
+<meta name="theme-color" content="#0B1E33">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230B1E33'/%3E%3Cellipse cx='20' cy='32' rx='13' ry='9' fill='%23fff'/%3E%3Cellipse cx='44' cy='32' rx='13' ry='9' fill='%23fff'/%3E%3Ccircle cx='21' cy='32' r='6' fill='%230FA3A3'/%3E%3Ccircle cx='45' cy='32' r='6' fill='%230FA3A3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ==========================================================================
+   Tokens
+   ========================================================================== */
+:root {
+  --navy: #0B1E33;
+  --navy-2: #12304F;
+  --navy-3: #1B3D61;
+  --teal: #0FA3A3;          /* brand accent: decorative, large text, on navy */
+  --teal-ink: #087C7C;      /* AA-safe teal for text and buttons on light */
+  --teal-soft: #E2F4F4;
+  --bg: #F6F8FA;
+  --surface: #FFFFFF;
+  --surface-2: #EEF2F6;
+  --ink: #0B1E33;
+  --ink-2: #3D4F63;
+  --muted: #56687B;
+  --line: #D8E0E8;
+  --on-navy: #E8EFF6;
+  --on-navy-muted: #A9B9CA;
+
+  --pending-bg: #FEF3C7; --pending-ink: #8A3B06; --pending: #D97706;
+  --ack-bg: #DBEAFE;     --ack-ink: #1E3A8A;     --ack: #2563EB;
+  --done-bg: #DCFCE7;    --done-ink: #14532D;    --done: #16A34A;
+  --late-bg: #FEE2E2;    --late-ink: #8F1414;    --late: #DC2626;
+
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(11, 30, 51, .06), 0 10px 30px rgba(11, 30, 51, .08);
+  --shadow-lg: 0 2px 4px rgba(11, 30, 51, .06), 0 24px 60px rgba(11, 30, 51, .16);
+  --focus: 0 0 0 3px var(--surface), 0 0 0 6px var(--teal-ink);
+
+  --gutter: 16px;
+  --wrap: 1180px;
+  --panel-reserve: var(--gutter);   /* room kept free for the fixed eyes panel */
+  --header-h: 64px;
+}
+@media (min-width: 640px)  { :root { --gutter: 24px; } }
+@media (min-width: 1024px) { :root { --panel-reserve: 276px; } }
+@media (min-width: 2000px) { html { font-size: 18px; } :root { --wrap: 1320px; } }
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; scroll-padding-top: calc(var(--header-h) + 12px); -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font); font-size: 1rem; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+img, svg, video, canvas { display: block; max-width: 100%; }
+h1, h2, h3, h4 { line-height: 1.15; margin: 0; letter-spacing: -.02em; }
+p { margin: 0; }
+a { color: var(--teal-ink); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: none; box-shadow: var(--focus); border-radius: 6px; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip-link { position: fixed; left: 12px; top: -60px; z-index: 100; background: var(--navy); color: #fff; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: top .2s; }
+.skip-link:focus { top: 12px; }
+
+/* Unfilled placeholders: deliberately loud so nothing ships unnoticed */
+.fill { display: inline-block; font-family: var(--mono); font-size: .78em; font-weight: 500; line-height: 1.4; color: var(--pending-ink); background: var(--pending-bg); border: 1px dashed var(--pending); border-radius: 6px; padding: 1px 7px; letter-spacing: 0; }
+
+.wrap {
+  margin-left: max(var(--gutter), calc((100vw - var(--wrap)) / 2));
+  margin-right: max(var(--panel-reserve), calc((100vw - var(--wrap)) / 2));
+}
+.section { padding-block: clamp(72px, 10vw, 136px); }
+.section-tint { background: var(--surface); border-block: 1px solid var(--line); }
+.section-dark { background: var(--navy); color: var(--on-navy); }
+.eyebrow { font-family: var(--mono); font-size: .78rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--teal-ink); }
+.section-dark .eyebrow { color: var(--teal); }
+.section-head { max-width: 720px; margin-bottom: clamp(36px, 5vw, 56px); }
+.section-head h2 { font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem); font-weight: 800; margin-top: 12px; }
+.section-head h2:focus { outline: none; }
+.section-head p { margin-top: 16px; font-size: 1.125rem; color: var(--ink-2); }
+.section-dark .section-head p { color: var(--on-navy-muted); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px; font-weight: 600; text-decoration: none; border: 1.5px solid transparent; cursor: pointer; transition: background-color .2s, border-color .2s, transform .2s, color .2s; }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--teal-ink); color: #fff; }
+.btn-primary:hover { background: #066464; }
+.btn-ghost { border-color: var(--line); background: var(--surface); color: var(--ink); }
+.btn-ghost:hover { border-color: var(--teal-ink); color: var(--teal-ink); }
+.btn-sm { min-height: 38px; padding: 0 14px; font-size: .9rem; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* toggle buttons that use aria-pressed */
+.toggle { display: inline-flex; align-items: center; gap: 8px; }
+.toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #9AA9B8; transition: background-color .2s; }
+.toggle[aria-pressed="true"]::before { background: var(--teal); box-shadow: 0 0 0 3px rgba(15, 163, 163, .25); }
+
+/* ==========================================================================
+   Header / nav
+   ========================================================================== */
+.site-header { position: sticky; top: 0; z-index: 40; background: rgba(246, 248, 250, .88); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid transparent; transition: border-color .2s; }
+.site-header.is-scrolled { border-bottom-color: var(--line); }
+.nav { height: var(--header-h); display: flex; align-items: center; gap: 24px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; color: var(--ink); text-decoration: none; letter-spacing: -.02em; }
+.brand svg { width: 34px; height: 34px; }
+.nav-links { display: flex; gap: 2px; margin: 0 0 0 auto; padding: 0; list-style: none; }
+.nav-links a { display: block; padding: 8px 12px; border-radius: 999px; color: var(--ink-2); font-weight: 500; font-size: .95rem; text-decoration: none; white-space: nowrap; transition: color .2s, background-color .2s; }
+.nav-links a:hover { color: var(--ink); background: var(--surface-2); }
+.nav-links a[aria-current="true"] { color: var(--teal-ink); background: var(--teal-soft); }
+.nav-cta { margin-left: 8px; white-space: nowrap; }
+.nav-toggle { display: none; margin-left: auto; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+.nav-toggle span { display: block; width: 18px; height: 2px; margin: 4px auto; background: var(--ink); border-radius: 2px; transition: transform .2s, opacity .2s; }
+.nav-toggle[aria-expanded="true"] span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.nav-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.nav-toggle[aria-expanded="true"] span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+@media (max-width: 1099px) {
+  .nav-toggle { display: block; }
+  .nav-cta { display: none; }
+  .nav-links { position: absolute; top: var(--header-h); left: 0; right: 0; flex-direction: column; gap: 0; padding: 8px var(--gutter) 16px; background: var(--bg); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); }
+  .nav-links a { padding: 14px 12px; border-radius: 10px; font-size: 1.05rem; }
+  .nav-links:not(.is-open) { display: none; }
+}
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+.hero { padding-block: clamp(40px, 7vw, 96px) clamp(64px, 9vw, 120px); position: relative; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(rgba(11, 30, 51, .07) 1px, transparent 1px); background-size: 22px 22px; mask-image: radial-gradient(ellipse 70% 60% at 30% 30%, #000 30%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse 70% 60% at 30% 30%, #000 30%, transparent 75%); pointer-events: none; }
+.hero-grid { position: relative; display: grid; gap: clamp(36px, 5vw, 64px); align-items: center; }
+@media (min-width: 1280px) { .hero-grid { grid-template-columns: 1fr 1.08fr; } }
+.hero h1 { font-size: clamp(2.6rem, 1.5rem + 4.6vw, 4.6rem); font-weight: 800; letter-spacing: -.035em; margin-top: 16px; }
+.hero h1 em { font-style: normal; color: var(--teal-ink); }
+.hero-sub { margin-top: 20px; font-size: clamp(1.05rem, 1rem + .35vw, 1.25rem); color: var(--ink-2); max-width: 560px; }
+.hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 28px; padding: 0; list-style: none; color: var(--muted); font-size: .92rem; }
+.hero-meta li { display: inline-flex; align-items: center; gap: 8px; }
+.hero-meta li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+.hero-media { margin: 0; }
+.video-frame { position: relative; border-radius: var(--radius); overflow: hidden; background: var(--navy); box-shadow: var(--shadow-lg); aspect-ratio: 16 / 9; }
+.video-frame video { width: 100%; height: 100%; object-fit: cover; }
+.hero-media figcaption { margin-top: 12px; font-size: .88rem; color: var(--muted); }
+
+/* ==========================================================================
+   Problem
+   ========================================================================== */
+.stats { display: grid; gap: 16px; }
+@media (min-width: 800px) { .stats { grid-template-columns: 1fr 1fr 1.3fr; } }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
+.stat-num { font-size: clamp(2.6rem, 2rem + 2vw, 3.6rem); font-weight: 800; letter-spacing: -.04em; color: var(--teal-ink); line-height: 1; }
+.stat p { margin-top: 14px; color: var(--ink-2); }
+.stat cite { display: block; margin-top: 14px; font-style: normal; font-size: .8rem; color: var(--muted); }
+.stat-quote { background: var(--navy); color: var(--on-navy); border-color: var(--navy); }
+.stat-quote blockquote { margin: 0; font-size: 1.2rem; font-weight: 500; line-height: 1.45; }
+.stat-quote cite { color: var(--on-navy-muted); }
+.problem-cols { display: grid; gap: 40px; margin-top: clamp(48px, 6vw, 72px); }
+@media (min-width: 900px) { .problem-cols { grid-template-columns: 1fr 1fr; gap: 56px; } }
+.problem-cols h3 { font-size: 1.3rem; margin-bottom: 18px; }
+.item-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.item-list li { padding: 16px 18px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); }
+.item-list strong { display: block; font-weight: 650; }
+.item-list span { color: var(--ink-2); font-size: .95rem; }
+.item-list.is-warn li { border-left: 4px solid var(--pending); }
+.insight { margin-top: clamp(48px, 6vw, 72px); background: var(--navy); color: var(--on-navy); border-radius: calc(var(--radius) + 4px); padding: clamp(28px, 4vw, 48px); display: grid; gap: 16px; }
+.insight .eyebrow { color: var(--teal); }
+.insight .big { font-size: clamp(1.3rem, 1rem + 1.2vw, 1.9rem); font-weight: 700; letter-spacing: -.02em; line-height: 1.3; }
+.insight .small { color: var(--on-navy-muted); max-width: 760px; }
+.source-note { margin-top: 20px; font-size: .8rem; color: var(--muted); }
+
+/* ==========================================================================
+   How it works: flow + hardware diagram
+   ========================================================================== */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: flow; }
+@media (min-width: 900px) { .flow { grid-template-columns: repeat(5, 1fr); } }
+.flow li { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 18px; counter-increment: flow; }
+.flow li::before { content: "0" counter(flow); font-family: var(--mono); font-size: .75rem; font-weight: 600; color: var(--teal-ink); }
+.flow strong { display: block; margin-top: 6px; font-size: 1.05rem; }
+.flow span { font-size: .92rem; color: var(--ink-2); }
+@media (min-width: 900px) {
+  .flow li:not(:last-child)::after { content: ""; position: absolute; right: -11px; top: 50%; width: 10px; height: 10px; border-top: 2px solid var(--teal); border-right: 2px solid var(--teal); transform: translateY(-50%) rotate(45deg); z-index: 1; }
+}
+.flow-return { margin-top: 12px; display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px; background: var(--done-bg); color: var(--done-ink); font-weight: 600; font-size: .92rem; }
+.benefits { display: grid; gap: 16px; margin-top: 40px; }
+@media (min-width: 800px) { .benefits { grid-template-columns: repeat(3, 1fr); } }
+.benefits div { border-top: 2px solid var(--teal); padding-top: 14px; }
+.benefits strong { display: block; font-size: 1.05rem; }
+.benefits p { color: var(--ink-2); font-size: .95rem; margin-top: 4px; }
+
+.diagram-block { margin-top: clamp(56px, 7vw, 88px); }
+.diagram-block > h3 { font-size: 1.5rem; }
+.diagram-block > p { color: var(--ink-2); margin-top: 8px; max-width: 680px; }
+.diagram-layout { display: grid; gap: 20px; margin-top: 28px; }
+@media (min-width: 1440px) { .diagram-layout { grid-template-columns: 1fr 300px; align-items: stretch; } }
+.diagram-wrap { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.diagram-scroll { overflow-x: auto; overscroll-behavior-x: contain; border-radius: var(--radius); }
+.diagram-scroll svg { width: 100%; height: auto; }
+.diagram-hint { display: none; padding: 10px 16px 14px; font-size: .82rem; color: var(--muted); }
+@media (max-width: 799px) { .diagram-scroll svg { min-width: 760px; } .diagram-hint { display: block; } }
+.hw-block { cursor: pointer; outline: none; }
+.hw-block rect { fill: var(--surface); stroke: #B9C6D3; stroke-width: 1.5; transition: fill .2s, stroke .2s; }
+.hw-block .hw-title { font: 650 16px var(--font); fill: var(--ink); }
+.hw-block .hw-sub { font: 400 12.5px var(--font); fill: var(--muted); }
+.hw-block .hw-tag { font: 600 10.5px var(--mono); fill: var(--teal-ink); letter-spacing: .06em; }
+.hw-block:hover rect, .hw-block.is-active rect { fill: var(--teal-soft); stroke: var(--teal); }
+.hw-block:focus-visible { box-shadow: none; }
+.hw-block:focus-visible rect { stroke: var(--teal-ink); stroke-width: 3.5; }
+.hw-block.is-active rect { stroke-width: 2.5; }
+.hw-boundary { fill: rgba(15, 163, 163, .04); stroke: var(--teal); stroke-width: 1.5; stroke-dasharray: 6 6; }
+.hw-boundary-label { font: 600 11px var(--mono); fill: var(--teal-ink); letter-spacing: .08em; }
+.hw-wire { fill: none; stroke: #8597AA; stroke-width: 2; }
+.hw-wire.is-power { stroke: var(--pending); stroke-dasharray: 5 5; }
+.hw-wire.is-return { stroke: var(--done); }
+.hw-wire.is-backup { stroke: #7C8FA3; stroke-dasharray: 2 5; stroke-linecap: round; }
+.hw-wire-label { font: 500 11px var(--mono); fill: var(--muted); }
+.hw-wire-label.is-return { fill: var(--done-ink); }
+.hw-pulse { pointer-events: none; }
+.hw-tip { position: absolute; z-index: 5; width: 240px; padding: 10px 12px; border-radius: 10px; background: var(--navy); color: var(--on-navy); font-size: .85rem; line-height: 1.45; box-shadow: var(--shadow-lg); pointer-events: none; opacity: 0; transition: opacity .15s; }
+.hw-tip.is-visible { opacity: 1; }
+.hw-tip strong { display: block; color: #fff; }
+.hw-detail { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.hw-detail h4 { font-size: 1.2rem; margin-top: 6px; }
+.hw-detail p { margin-top: 10px; color: var(--ink-2); font-size: .95rem; }
+.hw-detail ul { margin: 14px 0 0; padding-left: 18px; color: var(--ink-2); font-size: .92rem; }
+.hw-detail li + li { margin-top: 4px; }
+.hw-detail .btn { margin-top: 18px; }
+.safety-callout { margin-top: 20px; display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: var(--radius-sm); background: var(--pending-bg); color: var(--pending-ink); font-size: .95rem; }
+.safety-callout svg { flex: none; width: 22px; height: 22px; margin-top: 2px; }
+
+/* ==========================================================================
+   3D viewer
+   ========================================================================== */
+.viewer { display: grid; gap: 20px; }
+@media (min-width: 1200px) { .viewer { grid-template-columns: 1fr 250px; } }
+.viewer-stage { position: relative; min-width: 0; }
+.viewer-canvas { position: relative; height: clamp(400px, 56vw, 640px); border-radius: var(--radius); overflow: hidden; background: radial-gradient(ellipse at 50% 35%, #FFFFFF 0%, #E6ECF2 75%); border: 1px solid var(--line); touch-action: none; }
+.viewer-canvas canvas { width: 100% !important; height: 100% !important; cursor: grab; }
+.viewer-canvas canvas:active { cursor: grabbing; }
+.viewer-canvas.is-hovering canvas { cursor: pointer; }
+.viewer-canvas img { width: 100%; height: 100%; object-fit: contain; padding: 24px 24px 56px; }
+.viewer-status { position: absolute; inset: 0; display: grid; place-content: center; color: var(--muted); font-weight: 500; text-align: center; padding: 24px; }
+.viewer-status::before { content: ""; width: 36px; height: 36px; margin: 0 auto 12px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--teal); animation: spin 1s linear infinite; display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.viewer-toolbar { position: absolute; left: 14px; top: 14px; display: flex; flex-wrap: wrap; gap: 8px; z-index: 2; }
+.viewer-toolbar .btn { background: rgba(255, 255, 255, .94); }
+.viewer-source { position: absolute; left: 14px; bottom: 14px; z-index: 2; max-width: calc(100% - 28px); font-family: var(--mono); font-size: .72rem; color: var(--muted); background: rgba(255, 255, 255, .92); padding: 4px 8px; border-radius: 6px; }
+.viewer-hint { margin-top: 10px; font-size: .88rem; color: var(--muted); }
+.viewer-tip { position: absolute; z-index: 3; padding: 5px 10px; border-radius: 8px; background: var(--navy); color: #fff; font-size: .82rem; font-weight: 600; pointer-events: none; white-space: nowrap; transform: translate(14px, -130%); opacity: 0; transition: opacity .12s; }
+.viewer-tip.is-visible { opacity: 1; }
+.part-card { position: absolute; right: 14px; top: 14px; z-index: 3; width: min(320px, calc(100% - 28px)); max-height: calc(100% - 28px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-lg); }
+.part-card h3 { font-size: 1.25rem; margin-top: 6px; padding-right: 32px; }
+.part-card p { margin-top: 10px; font-size: .95rem; color: var(--ink-2); }
+.part-card dl { margin: 14px 0 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .88rem; }
+.part-card dt { color: var(--muted); }
+.part-card dd { margin: 0; font-weight: 500; }
+.part-card .close { position: absolute; right: 12px; top: 12px; }
+@media (max-width: 699px) { .part-card { position: relative; right: auto; top: auto; width: auto; max-height: none; margin-top: 12px; box-shadow: var(--shadow); } }
+.icon-btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 1.1rem; line-height: 1; }
+.icon-btn:hover { border-color: var(--teal-ink); color: var(--teal-ink); }
+.part-menu h3 { font-size: .8rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; }
+.part-menu ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+@media (min-width: 600px) and (max-width: 1199px) { .part-menu ul { grid-template-columns: 1fr 1fr; } }
+.part-menu button { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 500; font-size: .93rem; transition: border-color .2s, background-color .2s; }
+.part-menu button:hover { border-color: var(--teal); }
+.part-menu button[aria-pressed="true"] { background: var(--teal-soft); border-color: var(--teal-ink); color: var(--teal-ink); font-weight: 600; }
+.part-menu .swatch { flex: none; width: 12px; height: 12px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, .12); }
+.part-menu .num { margin-left: auto; font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+
+/* ==========================================================================
+   Training data
+   ========================================================================== */
+.data-grid { display: grid; gap: clamp(28px, 4vw, 56px); align-items: center; }
+@media (min-width: 1100px) { .data-grid { grid-template-columns: 1.35fr 1fr; } }
+.data-media { position: relative; border-radius: var(--radius); overflow: hidden; background: #071526; border: 1px solid var(--navy-3); aspect-ratio: 16 / 9; box-shadow: var(--shadow-lg); }
+.data-media video, .data-media canvas { width: 100%; height: 100%; object-fit: contain; }
+.data-badge { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .76rem; color: var(--on-navy-muted); }
+.data-badge .fill { font-size: .7rem; }
+.data-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+.data-steps li { display: grid; grid-template-columns: 44px 1fr; gap: 14px; }
+.data-steps .n { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-family: var(--mono); font-weight: 700; background: var(--navy-2); color: var(--teal); }
+.data-steps strong { display: block; color: #fff; }
+.data-steps span { color: var(--on-navy-muted); font-size: .95rem; }
+.label-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.label-chips span { font-family: var(--mono); font-size: .72rem; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--navy-3); color: var(--on-navy); }
+
+/* ==========================================================================
+   Demo simulation
+   ========================================================================== */
+.demo-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 20px; }
+.demo-controls .note { font-size: .85rem; color: var(--muted); margin-left: auto; }
+.laptop { max-width: 1080px; margin-inline: auto; }
+.laptop-screen { position: relative; background: #0A1828; border-radius: 22px 22px 8px 8px; padding: 28px 12px 12px; box-shadow: var(--shadow-lg); }
+.laptop-cam { position: absolute; top: 11px; left: 50%; width: 7px; height: 7px; margin-left: -3px; border-radius: 50%; background: #233952; }
+.laptop-base { position: relative; height: 20px; margin: 0 -4%; background: linear-gradient(#D7DEE6, #A9B5C2); border-radius: 0 0 20px 20px; box-shadow: 0 16px 30px rgba(11, 30, 51, .18); }
+.laptop-base::after { content: ""; position: absolute; left: 50%; top: 0; width: 18%; height: 7px; transform: translateX(-50%); background: #BAC5D1; border-radius: 0 0 10px 10px; }
+.screen-split { display: grid; background: var(--bg); border-radius: 8px; overflow: hidden; }
+@media (min-width: 860px) { .screen-split { grid-template-columns: 1fr 1.15fr; min-height: 560px; } }
+.app-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.app-head h3 { font-size: .95rem; font-weight: 650; }
+.app-head .meta { font-size: .78rem; color: var(--muted); }
+.live { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: .72rem; font-weight: 600; color: var(--teal-ink); }
+.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--teal); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.patient-ui { display: flex; flex-direction: column; background: var(--surface); }
+@media (min-width: 860px) { .patient-ui { border-right: 1px solid var(--line); } }
+.pui-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.pui-eyes { display: flex; justify-content: center; gap: 22px; padding: 18px; border-radius: 12px; background: var(--navy); --gx: 0; --gy: 0; }
+.m-eye { width: 62px; height: 38px; border-radius: 50%; background: #fff; display: grid; place-items: center; overflow: hidden; transition: transform .12s; }
+.m-eye i { width: 24px; height: 24px; border-radius: 50%; background: radial-gradient(circle at 50% 50%, var(--navy) 0 34%, var(--teal) 36%); transform: translate(calc(var(--gx) * 15px), calc(var(--gy) * 8px)); transition: transform .35s cubic-bezier(.3, .7, .3, 1); }
+.pui-eyes.is-blinking .m-eye { transform: scaleY(.1); }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { position: relative; text-align: left; min-height: 82px; padding: 12px 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); cursor: pointer; transition: border-color .2s, background-color .2s, box-shadow .2s; }
+.tile:hover { border-color: #9FD8D8; }
+.tile .hint { display: block; font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+.tile .label { display: block; margin-top: 6px; font-size: 1.15rem; font-weight: 700; }
+.tile[aria-pressed="true"] { border-color: var(--teal-ink); background: var(--teal-soft); box-shadow: 0 0 0 3px rgba(15, 163, 163, .2); }
+.tile .sent { position: absolute; right: 10px; bottom: 12px; font-family: var(--mono); font-size: .65rem; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: var(--teal-ink); color: #fff; opacity: 0; transition: opacity .2s; }
+.tile.is-sent .sent { opacity: 1; }
+.confirm-btn { min-height: 48px; border-radius: 12px; border: 0; background: var(--navy); color: #fff; font-weight: 650; cursor: pointer; }
+.confirm-btn:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
+.pui-status { margin-top: auto; min-height: 76px; display: grid; place-items: center; text-align: center; padding: 14px; border-radius: 12px; font-weight: 650; font-size: 1.05rem; background: var(--surface-2); color: var(--ink-2); transition: background-color .3s, color .3s; }
+.pui-status[data-state="selected"] { background: var(--teal-soft); color: var(--teal-ink); }
+.pui-status[data-state="pending"] { background: var(--pending-bg); color: var(--pending-ink); }
+.pui-status[data-state="acknowledged"] { background: var(--teal-ink); color: #fff; font-size: 1.3rem; }
+.pui-status[data-state="resolved"] { background: var(--done-bg); color: var(--done-ink); }
+.staff-ui { display: flex; flex-direction: column; background: #F1F4F8; min-width: 0; }
+.staff-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.mini-label { font-family: var(--mono); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.mini-label + .history, .req-list + .mini-label { margin-top: 6px; }
+.mini-label .count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--navy); color: #fff; font-size: .7rem; letter-spacing: 0; }
+.req-list { display: grid; gap: 10px; }
+.req-empty { padding: 22px; border-radius: 12px; border: 1.5px dashed var(--line); color: var(--muted); text-align: center; font-size: .92rem; }
+.req-card { background: var(--surface); border: 1.5px solid var(--line); border-left: 5px solid var(--pending); border-radius: 12px; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; transition: border-color .3s, background-color .3s, opacity .4s, transform .4s; }
+.req-card[data-status="acknowledged"] { border-left-color: var(--ack); }
+.req-card[data-status="resolved"] { border-left-color: var(--done); }
+.req-card.is-late { border-color: var(--late); border-left-color: var(--late); background: #FFF7F7; }
+.req-card.is-leaving { opacity: 0; transform: translateX(16px); }
+.req-type { font-size: 1.15rem; font-weight: 750; display: flex; align-items: center; gap: 8px; }
+.req-type .prio { font-size: .66rem; font-family: var(--mono); font-weight: 700; padding: 2px 6px; border-radius: 5px; background: var(--late-bg); color: var(--late-ink); }
+.req-meta { grid-column: 1; font-size: .8rem; color: var(--muted); }
+.req-meta .fill { font-size: .7rem; }
+.req-right { grid-column: 2; grid-row: 1 / span 2; text-align: right; display: grid; gap: 4px; justify-items: end; align-content: start; }
+.req-timer { font-family: var(--mono); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; font-size: .7rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--pending-bg); color: var(--pending-ink); }
+.chip[data-status="acknowledged"] { background: var(--ack-bg); color: var(--ack-ink); }
+.chip[data-status="resolved"] { background: var(--done-bg); color: var(--done-ink); }
+.chip.is-late { background: var(--late-bg); color: var(--late-ink); }
+.req-actions { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 8px; }
+.req-actions button { flex: 1; min-height: 40px; border-radius: 9px; font-weight: 650; font-size: .9rem; cursor: pointer; border: 1.5px solid var(--line); background: var(--surface); }
+.req-actions [data-action="ack"] { background: var(--teal-ink); border-color: var(--teal-ink); color: #fff; }
+.req-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .82rem; max-height: 168px; overflow-y: auto; }
+.history li { display: grid; grid-template-columns: 74px 1fr; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--surface); }
+.history time { font-family: var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.history .h-empty { display: block; color: var(--muted); background: transparent; padding-left: 0; }
+.legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; margin: 28px 0 0; padding: 0; list-style: none; font-size: .88rem; color: var(--ink-2); }
+.legend li { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 12px; height: 12px; border-radius: 4px; }
+
+/* ==========================================================================
+   Team + footer
+   ========================================================================== */
+.team-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 720px) { .team-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.member { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
+.avatar { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; font-weight: 800; font-size: 1.3rem; color: #fff; background: linear-gradient(135deg, var(--teal-ink), var(--navy-3)); }
+.member h3 { margin-top: 16px; font-size: 1.15rem; }
+.member p { margin-top: 6px; }
+.workstreams { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--ink-2); font-size: .92rem; }
+.workstreams span { padding: 6px 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); }
+.site-footer { background: var(--navy); color: var(--on-navy-muted); padding-block: 56px 40px; font-size: .92rem; }
+.footer-grid { display: grid; gap: 32px; }
+@media (min-width: 800px) { .footer-grid { grid-template-columns: 1.4fr 1fr 1fr; } }
+.site-footer .brand { color: #fff; }
+.site-footer h3 { font-size: .78rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--on-navy); margin-bottom: 12px; }
+.site-footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.footer-tag { margin-top: 14px; max-width: 380px; }
+.footer-bottom { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--navy-3); font-size: .8rem; }
+
+/* ==========================================================================
+   Eyes navigator (fixed panel)
+   ========================================================================== */
+.eyes-panel { position: fixed; z-index: 30; right: var(--gutter); top: calc(50% + var(--header-h) / 2); transform: translateY(-50%); width: 236px; background: var(--navy); color: var(--on-navy); border-radius: 20px; padding: 14px; box-shadow: var(--shadow-lg); border: 1px solid var(--navy-3); }
+.eyes-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.eyes-title { font-family: var(--mono); font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--teal); }
+.eyes-panel .icon-btn { width: 32px; height: 32px; background: var(--navy-2); border-color: var(--navy-3); color: var(--on-navy); }
+.eyes-svg { width: 100%; height: auto; margin-top: 8px; }
+.eyes-svg .sclera { fill: #fff; }
+.eyes-readout { margin-top: 6px; text-align: center; font-size: .9rem; color: var(--on-navy-muted); min-height: 1.6em; }
+.eyes-readout strong { color: #fff; }
+.gaze-grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-areas: ". up ." "left blink right" ". down ."; gap: 6px; margin-top: 12px; }
+.gaze-grid button { min-height: 44px; padding: 4px 2px; border-radius: 10px; border: 1px solid var(--navy-3); background: var(--navy-2); color: var(--on-navy); font-size: .72rem; font-weight: 600; line-height: 1.2; cursor: pointer; display: grid; place-items: center; gap: 1px; transition: background-color .15s, border-color .15s, color .15s; }
+.gaze-grid button b { font-size: 1rem; }
+.gaze-grid button:hover, .gaze-grid button.is-active { background: var(--teal); border-color: var(--teal); color: var(--navy); }
+.gaze-grid button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px #fff; }
+.gaze-grid [data-gaze="up"] { grid-area: up; } .gaze-grid [data-gaze="left"] { grid-area: left; } .gaze-grid [data-gaze="right"] { grid-area: right; } .gaze-grid [data-gaze="down"] { grid-area: down; } .gaze-grid [data-gaze="blink"] { grid-area: blink; }
+.eyes-panel :focus-visible { box-shadow: 0 0 0 2px var(--navy), 0 0 0 4px #fff; }
+.eyes-foot { margin-top: 12px; display: flex; justify-content: center; }
+.eyes-foot .btn { color: var(--on-navy); border-color: var(--navy-3); background: transparent; }
+.eyes-note { margin-top: 10px; font-size: .72rem; line-height: 1.45; color: var(--on-navy-muted); text-align: center; }
+.eyes-panel[data-collapsed="true"] .eyes-body { display: none; }
+@media (max-width: 1023px) {
+  .eyes-panel { top: auto; bottom: 12px; transform: none; width: min(300px, calc(100vw - 24px)); right: 12px; padding: 10px 12px; max-height: calc(100vh - var(--header-h) - 24px); overflow-y: auto; }
+  .eyes-panel[data-collapsed="true"] { width: 188px; }
+  .eyes-panel[data-collapsed="true"] .eyes-svg { max-width: 116px; margin-inline: auto; margin-top: 2px; }
+  .eyes-panel[data-collapsed="true"] .eyes-readout { font-size: .76rem; margin-top: 2px; }
+}
+
+/* toast */
+.toast { position: fixed; z-index: 60; left: 50%; top: calc(var(--header-h) + 12px); transform: translate(-50%, -8px); width: max-content; max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 12px; background: var(--navy); color: #fff; font-weight: 500; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js"
+  }
+}
+</script>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!-- ======================= NAV ======================= -->
+<header class="site-header" data-header>
+  <nav class="nav wrap" aria-label="Primary">
+    <a class="brand" href="#top" aria-label="EqualCare home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#0B1E33"/><ellipse cx="20" cy="32" rx="13" ry="9" fill="#fff"/><ellipse cx="44" cy="32" rx="13" ry="9" fill="#fff"/><circle cx="21" cy="32" r="6" fill="#0FA3A3"/><circle cx="45" cy="32" r="6" fill="#0FA3A3"/><circle cx="21" cy="32" r="2.6" fill="#0B1E33"/><circle cx="45" cy="32" r="2.6" fill="#0B1E33"/></svg>
+      EqualCare
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Open menu" data-nav-toggle><span></span><span></span><span></span></button>
+    <ul class="nav-links" id="nav-links" data-nav-links>
+      <li><a href="#problem">Problem</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#model">Hardware</a></li>
+      <li><a href="#data">Training data</a></li>
+      <li><a href="#demo">Live demo</a></li>
+      <li><a href="#team">Team</a></li>
+    </ul>
+    <a class="btn btn-primary btn-sm nav-cta" href="#demo">Try the live demo</a>
+  </nav>
+</header>
+
+<!-- ======================= EYES NAVIGATOR (fixed) ======================= -->
+<aside class="eyes-panel" id="eyes-panel" aria-labelledby="eyes-title" data-eyes data-collapsed="false">
+  <div class="eyes-head">
+    <h2 class="eyes-title" id="eyes-title">Gaze navigator</h2>
+    <button class="icon-btn" type="button" data-eyes-collapse aria-expanded="true" aria-controls="eyes-body" aria-label="Collapse gaze navigator">&minus;</button>
+  </div>
+  <svg class="eyes-svg" viewBox="0 0 200 76" role="img" aria-label="Animated eyes that look toward the selected option" data-eyes-svg>
+    <defs>
+      <clipPath id="eye-clip-l"><ellipse cx="52" cy="38" rx="40" ry="25"/></clipPath>
+      <clipPath id="eye-clip-r"><ellipse cx="148" cy="38" rx="40" ry="25"/></clipPath>
+    </defs>
+    <g class="eye-ball">
+      <ellipse class="sclera" cx="52" cy="38" rx="40" ry="25"/>
+      <g clip-path="url(#eye-clip-l)"><g class="iris"><circle cx="52" cy="38" r="16" fill="#0FA3A3"/><circle cx="52" cy="38" r="7.5" fill="#0B1E33"/><circle cx="56.5" cy="33.5" r="2.8" fill="#fff"/></g></g>
+    </g>
+    <g class="eye-ball">
+      <ellipse class="sclera" cx="148" cy="38" rx="40" ry="25"/>
+      <g clip-path="url(#eye-clip-r)"><g class="iris"><circle cx="148" cy="38" r="16" fill="#0FA3A3"/><circle cx="148" cy="38" r="7.5" fill="#0B1E33"/><circle cx="152.5" cy="33.5" r="2.8" fill="#fff"/></g></g>
+    </g>
+  </svg>
+  <p class="eyes-readout" data-eyes-readout aria-hidden="true">Watching&hellip;</p>
+  <p class="sr-only" role="status" aria-live="polite" data-eyes-live></p>
+  <div class="eyes-body" id="eyes-body">
+    <div class="gaze-grid" role="group" aria-label="Gaze options. Arrow keys look in a direction; Confirm sends the request.">
+      <button type="button" data-gaze="up" data-kind="discomfort" aria-pressed="false"><b aria-hidden="true">&uarr;</b>Discomfort</button>
+      <button type="button" data-gaze="left" data-kind="water" aria-pressed="false"><b aria-hidden="true">&larr;</b>Water</button>
+      <button type="button" data-gaze="blink" aria-label="Confirm (blink)"><b aria-hidden="true">&#9673;</b>Confirm</button>
+      <button type="button" data-gaze="right" data-kind="assistance" aria-pressed="false"><b aria-hidden="true">&rarr;</b>Assistance</button>
+      <button type="button" data-gaze="down" data-kind="emergency" aria-pressed="false"><b aria-hidden="true">&darr;</b>Emergency</button>
+    </div>
+    <div class="eyes-foot"><button type="button" class="btn btn-sm toggle" data-eyes-auto aria-pressed="true">Auto demo</button></div>
+    <p class="eyes-note">Pick an option, then Confirm to send it to the live demo. Concept mapping: the prototype steps a highlight (NEXT) and selects with a double-blink.</p>
+  </div>
+</aside>
+
+<main id="main">
+
+<!-- ======================= HERO ======================= -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow" data-reveal>EOG &middot; Eye-controlled patient assistance</p>
+      <h1 id="hero-title" data-reveal>Ask for help<br>with <em>a glance.</em></h1>
+      <p class="hero-sub" data-reveal>EqualCare lets patients who can&rsquo;t speak or move call for help with just their eyes. Gel electrodes and a BioAmp Pill read eye movements, an ESP32 sends the request over Wi&#8209;Fi, and the staff dashboard tracks it until it&rsquo;s resolved.</p>
+      <div class="hero-ctas" data-reveal>
+        <a class="btn btn-primary" href="#demo">Try the live demo</a>
+        <a class="btn btn-ghost" href="#model">Explore the hardware</a>
+      </div>
+      <ul class="hero-meta" data-reveal>
+        <li>Team of 4</li>
+        <li>56-hour build</li>
+        <li><span class="fill">[FILL: event name]</span></li>
+      </ul>
+    </div>
+    <figure class="hero-media" data-reveal>
+      <div class="video-frame">
+        <video data-autoplay data-src="assets/equalcare_showcase_720p.mp4" poster="assets/showcase_poster.jpg" muted loop playsinline controls preload="none" aria-label="EqualCare showcase film, 90 seconds" aria-describedby="showcase-desc">
+          <track kind="captions" srclang="en" label="English" src="assets/equalcare_showcase.en.vtt">
+        </video>
+      </div>
+      <figcaption id="showcase-desc">Showcase film, 1:30. Captions are burned in; a text track is also available from CC.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================= PROBLEM ======================= -->
+<section class="section section-tint" id="problem" aria-labelledby="problem-title">
+  <div class="wrap">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">01 &middot; The problem</p>
+      <h2 id="problem-title">Some patients think clearly but can&rsquo;t say what they need.</h2>
+    </header>
+    <div class="stats">
+      <article class="stat" data-reveal>
+        <p class="stat-num">53.9%</p>
+        <p>of 2,671 patients on breathing machines in two US hospitals were awake and alert enough to use a communication aid.</p>
+        <cite>Happ et al., Heart &amp; Lung, 2015</cite>
+      </article>
+      <article class="stat" data-reveal>
+        <p class="stat-num">3&times;</p>
+        <p>more likely to suffer a preventable harmful event in hospital when a patient has trouble communicating.</p>
+        <cite>Bartlett et al., CMAJ, 2008</cite>
+      </article>
+      <article class="stat stat-quote" data-reveal>
+        <blockquote>Being unable to speak ranks among the most distressing parts of intensive care, alongside thirst, breathlessness and pain.</blockquote>
+        <cite>Brambilla et al., Nursing in Critical Care, 2025</cite>
+      </article>
+    </div>
+    <div class="problem-cols">
+      <div data-reveal>
+        <h3>Who struggles to communicate</h3>
+        <ul class="item-list">
+          <li><strong>Stroke or brain injury</strong><span>Can lose speech and the use of one or both arms.</span></li>
+          <li><strong>ALS / motor neurone disease</strong><span>Muscles slowly stop working, but the mind stays sharp.</span></li>
+          <li><strong>Spinal cord injury</strong><span>Paralysis from the neck down can rule out hands.</span></li>
+          <li><strong>Patients on a breathing machine</strong><span>A tube in the throat means no voice at all.</span></li>
+        </ul>
+      </div>
+      <div data-reveal>
+        <h3>What they have today</h3>
+        <ul class="item-list is-warn">
+          <li><strong>Call bell</strong><span>Needs a hand that can press a button. A paralysed patient simply can&rsquo;t use it.</span></li>
+          <li><strong>Alphabet boards and lip reading</strong><span>Slow and tiring, and only work if a nurse is already at the bedside.</span></li>
+          <li><strong>Nobody tracks the request</strong><span>If a call is missed, it&rsquo;s forgotten. No one knows how long the patient waited.</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="insight" data-reveal>
+      <p class="eyebrow">The key insight</p>
+      <p class="big">Eye movement and blinking are often the last movements a paralysed person can still control.</p>
+      <p class="small">In locked-in syndrome, for example, the person is fully aware, and blinking is how they show it. EqualCare turns that movement into a request.</p>
+    </div>
+    <p class="source-note">Sources: Happ et al., Heart &amp; Lung, 2015; Bartlett et al., CMAJ, 2008; Brambilla et al., Nursing in Critical Care, 2025; &ldquo;Consciousness in the Locked-in Syndrome&rdquo;, The Neurology of Consciousness, 2009.</p>
+  </div>
+</section>
+
+<!-- ======================= HOW IT WORKS ======================= -->
+<section class="section" id="how" aria-labelledby="how-title">
+  <div class="wrap">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">02 &middot; How it works</p>
+      <h2 id="how-title">From an eye movement to a nurse at the bedside.</h2>
+      <p>Two deliberate actions are needed, choose and then confirm, so an ordinary blink never sends a request by accident.</p>
+    </header>
+    <ol class="flow" data-reveal>
+      <li><strong>Eyes</strong><span>The patient looks or blinks.</span></li>
+      <li><strong>Sensor</strong><span>Gel pads pick up the eye signal.</span></li>
+      <li><strong>Mini-computer</strong><span>The ESP32 checks it was on purpose.</span></li>
+      <li><strong>Patient screen</strong><span>Shows the chosen request.</span></li>
+      <li><strong>Staff screen</strong><span>A nurse sees it and responds.</span></li>
+    </ol>
+    <p class="flow-return" data-reveal><span aria-hidden="true">&#8617;</span> &ldquo;Help is coming &#10003;&rdquo; goes back to the patient</p>
+    <div class="benefits" data-reveal>
+      <div><strong>No hands, no voice</strong><p>Works for a patient who can&rsquo;t move their hands or speak.</p></div>
+      <div><strong>No helper needed to start</strong><p>The patient asks on their own, any time, instead of waiting to be noticed.</p></div>
+      <div><strong>Never forgotten</strong><p>Every request is tracked from Pending to Acknowledged to Resolved. If it waits too long, it turns red.</p></div>
+    </div>
+
+    <div class="diagram-block" data-diagram>
+      <h3 data-reveal>Hardware block diagram</h3>
+      <p data-reveal>Hover or focus a block for a summary, select it for details. Blocks that exist in the enclosure also light up in the 3D model below.</p>
+      <div class="diagram-layout">
+        <div class="diagram-wrap" data-reveal>
+          <div class="diagram-scroll">
+            <svg viewBox="0 0 1100 440" role="group" aria-label="Hardware block diagram. Gel electrodes feed the BioAmp Pill, which feeds the ESP32. The ESP32 sends commands over Wi-Fi to the patient screen, which sends requests to the staff dashboard. A battery powers the isolated patient-side circuit and a joystick is a backup input to the ESP32." data-diagram-svg>
+              <defs>
+                <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8597AA"/></marker>
+                <marker id="arw-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#16A34A"/></marker>
+                <marker id="arw-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D97706"/></marker>
+              </defs>
+              <rect class="hw-boundary" x="20" y="44" width="642" height="374" rx="18"/>
+              <text class="hw-boundary-label" x="40" y="72">ISOLATED PATIENT SIDE &middot; BATTERY ONLY</text>
+
+              <!-- connectors (data-flow sets pulse colour) -->
+              <path class="hw-wire" d="M200 132 H246" marker-end="url(#arw)" data-flow="signal"/>
+              <path class="hw-wire" d="M410 132 H456" marker-end="url(#arw)" data-flow="signal"/>
+              <path class="hw-wire" d="M620 132 H676" marker-end="url(#arw)" data-flow="signal"/>
+              <path class="hw-wire" d="M790 132 C 822 132, 818 82, 846 82" marker-end="url(#arw)" data-flow="signal"/>
+              <path class="hw-wire" d="M920 124 V 246" marker-end="url(#arw)" data-flow="signal"/>
+              <path class="hw-wire is-return" d="M985 250 V 128" marker-end="url(#arw-g)" data-flow="return"/>
+              <path class="hw-wire is-power" d="M330 300 V 178" marker-end="url(#arw-a)" data-flow="power"/>
+              <path class="hw-wire is-power" d="M410 330 C 445 330, 470 240, 492 178" marker-end="url(#arw-a)" data-flow="power"/>
+              <path class="hw-wire is-backup" d="M570 300 V 178" marker-end="url(#arw)" data-flow="backup"/>
+
+              <text class="hw-wire-label" x="205" y="122">EOG</text>
+              <text class="hw-wire-label" x="413" y="122">GPIO1</text>
+              <text class="hw-wire-label" x="626" y="196">NEXT /</text>
+              <text class="hw-wire-label" x="626" y="210">SELECT</text>
+              <text class="hw-wire-label" x="928" y="196">request</text>
+              <text class="hw-wire-label is-return" x="993" y="196">help is coming</text>
+              <text class="hw-wire-label" x="338" y="244">USB power</text>
+              <text class="hw-wire-label" x="578" y="244">backup</text>
+
+              <!-- blocks -->
+              <g class="hw-block" data-block="electrodes" tabindex="0" role="button" aria-label="Gel electrodes. Press for details.">
+                <rect x="40" y="90" width="160" height="84" rx="14"/>
+                <text class="hw-tag" x="56" y="114">HW1 &middot; INPUT</text><text class="hw-title" x="56" y="140">Gel electrodes</text><text class="hw-sub" x="56" y="160">3 pads read the eyes</text>
+              </g>
+              <g class="hw-block" data-block="bioamp" tabindex="0" role="button" aria-label="BioAmp EXG Pill. Press for details.">
+                <rect x="250" y="90" width="160" height="84" rx="14"/>
+                <text class="hw-tag" x="266" y="114">HW3 &middot; AMPLIFY</text><text class="hw-title" x="266" y="140">BioAmp Pill</text><text class="hw-sub" x="266" y="160">Amplify + filter</text>
+              </g>
+              <g class="hw-block" data-block="esp32" tabindex="0" role="button" aria-label="ESP32-S3. Press for details.">
+                <rect x="460" y="90" width="160" height="84" rx="14"/>
+                <text class="hw-tag" x="476" y="114">HW4 &middot; BRAIN</text><text class="hw-title" x="476" y="140">ESP32-S3</text><text class="hw-sub" x="476" y="160">Read &middot; classify &middot; send</text>
+              </g>
+              <g class="hw-block" data-block="wifi" tabindex="0" role="button" aria-label="Wi-Fi link. Press for details.">
+                <rect x="680" y="98" width="110" height="68" rx="34"/>
+                <text class="hw-title" x="735" y="138" text-anchor="middle">Wi&#8209;Fi</text>
+              </g>
+              <g class="hw-block" data-block="patient" tabindex="0" role="button" aria-label="Patient screen. Press for details.">
+                <rect x="850" y="40" width="200" height="84" rx="14"/>
+                <text class="hw-tag" x="866" y="64">HW6 &middot; LAPTOP</text><text class="hw-title" x="866" y="90">Patient screen</text><text class="hw-sub" x="866" y="110">Choose &middot; confirm</text>
+              </g>
+              <g class="hw-block" data-block="staff" tabindex="0" role="button" aria-label="Staff dashboard. Press for details.">
+                <rect x="850" y="250" width="200" height="84" rx="14"/>
+                <text class="hw-tag" x="866" y="274">HW7 &middot; LAPTOP</text><text class="hw-title" x="866" y="300">Staff dashboard</text><text class="hw-sub" x="866" y="320">Acknowledge &middot; resolve</text>
+              </g>
+              <g class="hw-block" data-block="battery" tabindex="0" role="button" aria-label="Battery pack. Press for details.">
+                <rect x="250" y="300" width="160" height="84" rx="14"/>
+                <text class="hw-tag" x="266" y="324">HW5 &middot; POWER</text><text class="hw-title" x="266" y="350">Battery pack</text><text class="hw-sub" x="266" y="370">Isolated supply</text>
+              </g>
+              <g class="hw-block" data-block="joystick" tabindex="0" role="button" aria-label="Joystick backup input. Press for details.">
+                <rect x="490" y="300" width="160" height="84" rx="14"/>
+                <text class="hw-tag" x="506" y="324">HW2 &middot; BACKUP</text><text class="hw-title" x="506" y="350">Joystick</text><text class="hw-sub" x="506" y="370">Same commands</text>
+              </g>
+              <g data-pulses></g>
+            </svg>
+          </div>
+          <p class="diagram-hint">Swipe sideways to see the whole diagram.</p>
+          <div class="hw-tip" data-hw-tip aria-hidden="true"></div>
+        </div>
+        <aside class="hw-detail" data-hw-detail aria-live="polite" data-reveal>
+          <p class="eyebrow">Block details</p>
+          <h4>Select a block</h4>
+          <p>Pick any block in the diagram to see what it does, how it&rsquo;s wired and why we chose it.</p>
+        </aside>
+      </div>
+      <div class="safety-callout" data-reveal>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22L12 2zm0 4.2L19.5 19h-15L12 6.2zM11 10v5h2v-5h-2zm0 6v2h2v-2h-2z"/></svg>
+        <p><strong>Safety by design:</strong> when pads are on someone&rsquo;s face, everything runs on battery. No wall socket, no charging laptop. This is a demo prototype for learning, not for real patients.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 3D MODEL ======================= -->
+<section class="section section-tint" id="model" aria-labelledby="model-title">
+  <div class="wrap">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">03 &middot; Interactive 3D model</p>
+      <h2 id="model-title" tabindex="-1">Explore the hardware.</h2>
+      <p>The enclosure from our CAD file: a 145 &times; 110 &times; 38 mm laser-cut box with 2.8 mm acrylic walls and a hinged lid, shown open. Battery at the back, electronics at the front. Click any part to see what it does.</p>
+    </header>
+    <div class="viewer" data-viewer>
+      <div class="viewer-stage">
+        <div class="viewer-canvas" data-viewer-canvas>
+          <div class="viewer-status" data-viewer-status>Loading 3D model&hellip;</div>
+          <div class="viewer-toolbar">
+            <button type="button" class="btn btn-ghost btn-sm toggle" data-viewer-explode aria-pressed="false">Explode</button>
+            <button type="button" class="btn btn-ghost btn-sm" data-viewer-reset>Reset view</button>
+          </div>
+          <span class="viewer-source" data-viewer-source hidden></span>
+          <div class="viewer-tip" data-viewer-tip aria-hidden="true"></div>
+          <div class="part-card" data-part-card role="region" aria-labelledby="part-card-title" aria-live="polite" hidden>
+            <button type="button" class="icon-btn close" data-part-close aria-label="Close part details">&times;</button>
+            <p class="eyebrow" data-part-index></p>
+            <h3 id="part-card-title" data-part-name></h3>
+            <p data-part-fn></p>
+            <dl data-part-specs></dl>
+          </div>
+        </div>
+        <p class="viewer-hint">Drag to rotate &middot; scroll or pinch to zoom &middot; right-drag to pan &middot; or use the parts list.</p>
+      </div>
+      <nav class="part-menu" aria-label="Model parts">
+        <h3>Parts</h3>
+        <ul data-part-menu></ul>
+      </nav>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= TRAINING DATA ======================= -->
+<section class="section section-dark" id="data" aria-labelledby="data-title">
+  <div class="wrap">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">04 &middot; Training data</p>
+      <h2 id="data-title">Calibrated on real EOG recordings.</h2>
+      <p>Every eye movement changes the voltage on the skin around the eye. Here is what that looks like at each stage of the pipeline.</p>
+    </header>
+    <div class="data-grid">
+      <div class="data-media" data-reveal>
+        <!-- Shown when CONFIG.trainingVideo is set -->
+        <video data-training-video muted playsinline controls preload="none" hidden aria-label="EOG training data recording: raw signal, filtered signal and direction labels">
+          <track kind="captions" srclang="en" label="English" default data-training-track>
+        </video>
+        <!-- Shown until a training video is configured -->
+        <canvas data-signal-canvas role="img" aria-label="Illustrative animation of three stacked traces: a noisy raw eye signal, the filtered horizontal and vertical signals, and the classified direction labels left, right, up, down and blink."></canvas>
+        <p class="data-badge" data-signal-badge>Illustrative animation, synthetic signal. Recording: <span class="fill">[FILL: training video URL]</span></p>
+      </div>
+      <div data-reveal>
+        <ol class="data-steps">
+          <li><span class="n" aria-hidden="true">1</span><div><strong>Raw EOG</strong><span>Three gel pads (IN+, IN&minus;, REF) pick up a tiny voltage that shifts as the eye moves. It arrives noisy and drifting.</span></div></li>
+          <li><span class="n" aria-hidden="true">2</span><div><strong>Filtered</strong><span>The BioAmp EXG Pill amplifies it thousands of times and filters out noise. The ESP32 reads it about 250 times a second; each movement becomes a clean step and a blink becomes a sharp spike.</span></div></li>
+          <li><span class="n" aria-hidden="true">3</span><div><strong>Direction labels</strong><span>Each deliberate movement is classified and mapped to a command.</span><div class="label-chips"><span>LEFT</span><span>RIGHT</span><span>UP</span><span>DOWN</span><span>BLINK</span></div></div></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= LIVE DEMO ======================= -->
+<section class="section" id="demo" aria-labelledby="demo-title">
+  <div class="wrap">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">05 &middot; Live demo</p>
+      <h2 id="demo-title">One request, start to finish.</h2>
+      <p>The patient chooses a request and confirms it. It lands on the staff dashboard with a live timer; staff acknowledge it, then resolve it, and the patient sees that help is coming. Drive it yourself, or with the gaze navigator.</p>
+    </header>
+    <div class="demo" data-demo>
+      <div class="demo-controls">
+        <button type="button" class="btn btn-ghost btn-sm toggle" data-demo-auto aria-pressed="true">Auto-play</button>
+        <button type="button" class="btn btn-ghost btn-sm toggle" data-demo-sound aria-pressed="false">Sound</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-demo-clear>Clear</button>
+        <span class="note">Front-end simulation. No real patient data.</span>
+      </div>
+      <div class="laptop" data-reveal>
+        <div class="laptop-screen">
+          <span class="laptop-cam" aria-hidden="true"></span>
+          <div class="screen-split">
+            <section class="patient-ui" aria-labelledby="patient-title">
+              <header class="app-head"><h3 id="patient-title">EqualCare &middot; Patient</h3><span class="meta">Bed <span data-bed></span></span></header>
+              <div class="pui-body">
+                <div class="pui-eyes" data-pui-eyes aria-hidden="true"><span class="m-eye"><i></i></span><span class="m-eye"><i></i></span></div>
+                <div class="tiles" role="group" aria-label="Requests" data-tiles>
+                  <button type="button" class="tile" data-kind="water" aria-pressed="false"><span class="hint">&larr; Look left</span><span class="label">Water</span><span class="sent">SENT</span></button>
+                  <button type="button" class="tile" data-kind="assistance" aria-pressed="false"><span class="hint">&rarr; Look right</span><span class="label">Assistance</span><span class="sent">SENT</span></button>
+                  <button type="button" class="tile" data-kind="discomfort" aria-pressed="false"><span class="hint">&uarr; Look up</span><span class="label">Discomfort</span><span class="sent">SENT</span></button>
+                  <button type="button" class="tile" data-kind="emergency" aria-pressed="false"><span class="hint">&darr; Look down</span><span class="label">Emergency</span><span class="sent">SENT</span></button>
+                </div>
+                <button type="button" class="confirm-btn" data-demo-confirm disabled>Confirm (double-blink)</button>
+                <div class="pui-status" data-pui-status data-state="idle" role="status" aria-live="off">Choose a request.</div>
+              </div>
+            </section>
+            <section class="staff-ui" aria-labelledby="staff-title">
+              <header class="app-head"><h3 id="staff-title">EqualCare &middot; Staff dashboard</h3><span class="live">LIVE</span></header>
+              <div class="staff-body">
+                <h4 class="mini-label">Active requests <span class="count" data-active-count>0</span></h4>
+                <div class="req-list" data-req-list aria-live="off" aria-relevant="additions"><p class="req-empty" data-req-empty>No active requests.</p></div>
+                <h4 class="mini-label">Request history</h4>
+                <ol class="history" data-history><li class="h-empty">Nothing yet.</li></ol>
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="laptop-base" aria-hidden="true"></div>
+      </div>
+      <ul class="legend" aria-label="Status colours">
+        <li><i style="background:var(--pending)"></i>Pending</li>
+        <li><i style="background:var(--ack)"></i>Acknowledged</li>
+        <li><i style="background:var(--done)"></i>Resolved</li>
+        <li><i style="background:var(--late)"></i>Waiting too long</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= TEAM ======================= -->
+<section class="section section-tint" id="team" aria-labelledby="team-title">
+  <div class="wrap">
+    <header class="section-head" data-reveal>
+      <p class="eyebrow">06 &middot; Team</p>
+      <h2 id="team-title">Built by OptiSync.</h2>
+      <p>Four people, one owner per module, 56 hours. We built it one working step at a time: keyboard first, then joystick, then eyes, with the joystick kept as a backup.</p>
+    </header>
+    <div class="team-grid">
+      <article class="member" data-reveal><div class="avatar" aria-hidden="true">A</div><h3>Aarush</h3><p>Programming &amp; electronics</p></article>
+      <article class="member" data-reveal><div class="avatar" aria-hidden="true">J</div><h3>Jiyaan</h3><p>Programming &amp; electronics</p></article>
+      <article class="member" data-reveal><div class="avatar" aria-hidden="true">K</div><h3>Kanika</h3><p>Electronics</p></article>
+      <article class="member" data-reveal><div class="avatar" aria-hidden="true">A</div><h3>Avaneesh</h3><p>CAD</p></article>
+    </div>
+    <p class="workstreams" data-reveal>Workstreams: <span>EOG &amp; hardware</span><span>ESP32 &amp; inputs</span><span>Patient interface</span><span>Backend &amp; staff UI</span></p>
+  </div>
+</section>
+</main>
+
+<!-- ======================= FOOTER ======================= -->
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="#top">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="16" fill="#12304F"/><ellipse cx="20" cy="32" rx="13" ry="9" fill="#fff"/><ellipse cx="44" cy="32" rx="13" ry="9" fill="#fff"/><circle cx="21" cy="32" r="6" fill="#0FA3A3"/><circle cx="45" cy="32" r="6" fill="#0FA3A3"/></svg>
+          EqualCare
+        </a>
+        <p class="footer-tag">Letting patients who can&rsquo;t speak or move ask for help with just their eyes.</p>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul>
+          <li>Event: <span class="fill">[FILL: event name]</span></li>
+          <li>Code: <span class="fill">[FILL: repo link]</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul>
+          <li><span class="fill">[FILL: contact]</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="footer-bottom">A demo prototype for learning, not for real patients. Battery power only while pads are on a face; always tested with a supervisor present.</p>
+  </div>
+</footer>
+
+<div class="toast" data-toast role="status" aria-live="polite"></div>
+<noscript><p style="position:fixed;bottom:0;left:0;right:0;margin:0;padding:12px;background:#FEF3C7;color:#8A3B06;text-align:center;z-index:99">The interactive demo, 3D model and gaze navigator need JavaScript.</p></noscript>
+
+<script type="module">
+import { gsap } from 'gsap';
+
+/* ==========================================================================
+   CONFIG: every unknown value lives here. Replace the [FILL: ...] strings.
+   ========================================================================== */
+const CONFIG = {
+  bedId: '[FILL: bed ID]',
+  backendEndpoint: '[FILL: WebSocket / API endpoint]',   // e.g. 'ws://192.168.1.20:8765'
+  trainingVideo: '[FILL: training video URL]',
+  trainingPoster: '[FILL: poster image]',
+  trainingCaptions: '[FILL: .vtt]',
+  modelUrl: 'assets/equalcare_box_v3.glb',               // exported from EqualCare_Box_v3_open.step
+  webglFallbackImage: 'assets/enclosure_render_open.png',
+  overdueAfterSeconds: 30,                               // demo value: when a Pending card turns red
+};
+const isFill = (v) => typeof v === 'string' && v.trim().startsWith('[FILL');
+
+/* ==========================================================================
+   Shared helpers
+   ========================================================================== */
+const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+const reduced = () => motionQuery.matches;
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+const bus = new EventTarget();
+const emit = (type, detail) => bus.dispatchEvent(new CustomEvent(type, { detail }));
+const on = (type, fn) => bus.addEventListener(type, (e) => fn(e.detail));
+const fmtElapsed = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; };
+const fmtClock = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+
+/** Observe visibility of an element; calls cb(isVisible) on every change. */
+function watchVisibility(el, cb, options = { threshold: 0.05 }) {
+  const io = new IntersectionObserver(([entry]) => cb(entry.isIntersecting), options);
+  io.observe(el);
+  return io;
+}
+
+/** Render a config value as text, or as a visible [FILL] pill. */
+function fillText(el, value) {
+  el.textContent = '';
+  if (isFill(value)) { const s = document.createElement('span'); s.className = 'fill'; s.textContent = value; el.append(s); }
+  else el.textContent = value;
+}
+
+const toast = (() => {
+  const el = $('[data-toast]'); let t;
+  return (msg) => { el.textContent = msg; el.classList.add('is-visible'); clearTimeout(t); t = setTimeout(() => el.classList.remove('is-visible'), 3400); };
+})();
+
+/* Request types: gaze direction ↔ request (single source of truth for the navigator and demo) */
+const REQUESTS = {
+  water:      { label: 'Water',      gaze: 'left',  arrow: '←' },
+  assistance: { label: 'Assistance', gaze: 'right', arrow: '→' },
+  discomfort: { label: 'Discomfort', gaze: 'up',    arrow: '↑' },
+  emergency:  { label: 'Emergency',  gaze: 'down',  arrow: '↓', priority: true },
+};
+const GAZE_VECTORS = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1], center: [0, 0] };
+const kindForGaze = (gaze) => Object.keys(REQUESTS).find((k) => REQUESTS[k].gaze === gaze);
+
+/* ==========================================================================
+   1. Eyes navigator
+   ========================================================================== */
+class EyesNavigator {
+  constructor(root) {
+    this.root = root;
+    this.svg = $('[data-eyes-svg]', root);
+    this.irises = $$('.iris', root);
+    this.balls = $$('.eye-ball', root);
+    this.readout = $('[data-eyes-readout]', root);
+    this.live = $('[data-eyes-live]', root);
+    this.buttons = $$('[data-gaze]', root);
+    this.autoBtn = $('[data-eyes-auto]', root);
+    this.collapseBtn = $('[data-eyes-collapse]', root);
+    this.selected = null;   // request kind chosen by the user
+    this.hold = false;      // pauses the auto cycle while hovering / mirroring the demo
+    this.step = 0;
+    this.MAX = [15, 8];     // iris travel in SVG units
+
+    this.qx = this.irises.map((el) => gsap.quickTo(el, 'x', { duration: 0.35, ease: 'power2.out' }));
+    this.qy = this.irises.map((el) => gsap.quickTo(el, 'y', { duration: 0.35, ease: 'power2.out' }));
+
+    this.bind();
+    this.setAuto(!reduced());
+    if (matchMedia('(max-width: 1023px)').matches) this.setCollapsed(true);
+    this.scheduleIdleBlink();
+  }
+
+  bind() {
+    this.buttons.forEach((btn) => {
+      const gaze = btn.dataset.gaze;
+      btn.addEventListener('pointerenter', () => this.preview(gaze));
+      btn.addEventListener('focus', () => this.preview(gaze));
+      btn.addEventListener('pointerleave', () => this.release());
+      btn.addEventListener('blur', () => this.release());
+      btn.addEventListener('click', () => (gaze === 'blink' ? this.confirm() : this.choose(btn.dataset.kind)));
+    });
+    // Arrow keys inside the panel look in that direction and choose the matching request.
+    this.root.addEventListener('keydown', (e) => {
+      const gaze = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' }[e.key];
+      if (!gaze) return;
+      e.preventDefault();
+      const kind = kindForGaze(gaze);
+      $(`[data-kind="${kind}"]`, this.root).focus();
+      this.choose(kind);
+    });
+    this.autoBtn.addEventListener('click', () => this.setAuto(!this.auto));
+    this.collapseBtn.addEventListener('click', () => this.setCollapsed(this.root.dataset.collapsed !== 'true'));
+    // Idle: pupils follow the cursor when the auto demo is off.
+    window.addEventListener('pointermove', (e) => {
+      if (this.auto || this.hold || this.selected || e.pointerType === 'touch') return;
+      const r = this.svg.getBoundingClientRect();
+      const clamp = (v) => Math.max(-1, Math.min(1, v));
+      this.lookVec(clamp((e.clientX - (r.left + r.width / 2)) / 360), clamp((e.clientY - (r.top + r.height / 2)) / 260));
+    }, { passive: true });
+    motionQuery.addEventListener('change', () => { if (reduced()) this.setAuto(false); });
+  }
+
+  lookVec(x, y) { this.qx.forEach((f) => f(x * this.MAX[0])); this.qy.forEach((f) => f(y * this.MAX[1])); }
+  look(gaze) { const [x, y] = GAZE_VECTORS[gaze] || GAZE_VECTORS.center; this.lookVec(x, y); }
+
+  blink() {
+    if (reduced()) return;
+    gsap.to(this.balls, { scaleY: 0.08, transformOrigin: '50% 50%', duration: 0.08, ease: 'power1.in', yoyo: true, repeat: 1, overwrite: true });
+  }
+
+  scheduleIdleBlink() {
+    setTimeout(() => { if (!document.hidden) this.blink(); this.scheduleIdleBlink(); }, 3500 + Math.random() * 3500);
+  }
+
+  /** Visual highlight + readout for one gaze direction (or 'blink'). */
+  show(gaze) {
+    this.buttons.forEach((b) => b.classList.toggle('is-active', b.dataset.gaze === gaze));
+    if (gaze === 'blink') { this.look('center'); this.blink(); this.readout.innerHTML = '◉ Blink = <strong>Confirm</strong>'; return; }
+    this.look(gaze);
+    const req = REQUESTS[kindForGaze(gaze)];
+    this.readout.innerHTML = `${req.arrow} Look ${gaze} = <strong>${req.label}</strong>`;
+  }
+
+  /** Back to the resting state: the user's selection, or centre. */
+  rest() {
+    if (this.selected) { this.show(REQUESTS[this.selected].gaze); return; }
+    this.buttons.forEach((b) => b.classList.remove('is-active'));
+    if (!this.auto) { this.look('center'); this.readout.textContent = 'Move your cursor, or pick an option.'; }
+  }
+
+  preview(gaze) { this.hold = true; this.show(gaze); }
+  release() { this.hold = false; this.rest(); }
+
+  /** User picks a request (button, arrow key). Also highlights the demo tile. */
+  choose(kind) {
+    this.selected = kind;
+    this.buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.kind === kind)));
+    this.setAuto(false);
+    this.show(REQUESTS[kind].gaze);
+    this.live.textContent = `${REQUESTS[kind].label} selected. Press Confirm to send.`;
+    emit('navigator:choose', { kind });
+  }
+
+  confirm() {
+    this.setAuto(false);
+    this.show('blink');
+    if (!this.selected) { toast('Look at an option first, then confirm.'); return; }
+    const kind = this.selected;
+    emit('navigator:confirm', { kind });
+    this.live.textContent = `${REQUESTS[kind].label} request sent to the staff dashboard.`;
+    toast(`${REQUESTS[kind].label} request sent. See it on the staff dashboard in the live demo.`);
+    this.selected = null;
+    this.buttons.forEach((b) => b.setAttribute('aria-pressed', 'false'));
+  }
+
+  /** Mirror what the demo patient screen is doing (does not re-emit events). */
+  mirror(kind, { blink = false } = {}) {
+    if (this.selected) return;   // never override the user's own choice
+    this.hold = true;
+    clearTimeout(this.mirrorTimer);
+    this.show(blink ? 'blink' : REQUESTS[kind].gaze);
+    this.mirrorTimer = setTimeout(() => { this.hold = false; this.rest(); }, 2500);
+  }
+
+  setAuto(state) {
+    this.auto = state && !reduced();
+    this.autoBtn.setAttribute('aria-pressed', String(this.auto));
+    clearInterval(this.timer);
+    if (!this.auto) { this.rest(); return; }
+    const seq = ['left', 'right', 'up', 'down', 'blink'];
+    const tick = () => { if (!this.hold && !document.hidden) this.show(seq[this.step++ % seq.length]); };
+    tick();
+    this.timer = setInterval(tick, 1600);
+  }
+
+  setCollapsed(collapsed) {
+    this.root.dataset.collapsed = String(collapsed);
+    this.collapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    this.collapseBtn.setAttribute('aria-label', collapsed ? 'Expand gaze navigator' : 'Collapse gaze navigator');
+    this.collapseBtn.innerHTML = collapsed ? '+' : '&minus;';
+  }
+}
+
+/* ==========================================================================
+   2. Interactive 3D model
+   ========================================================================== */
+const PARTS = [
+  { id: 'enclosure', name: 'Acrylic enclosure', color: '#9ECBE9', offset: [0, -0.035, 0],
+    fn: 'Holds everything. Laser-cut from clear 2.8 mm acrylic, so you can see the electronics inside.',
+    specs: [['Outer size', '145 × 110 × 38 mm'], ['Walls', '2.8 mm acrylic, laser-cut'], ['Layout', 'Battery at the back, electronics at the front']] },
+  { id: 'lid', name: 'Hinged lid', color: '#BFDDF0', offset: [0, 0.02, -0.06],
+    fn: 'Opens for access. When closed, only the joystick sticks out through it.',
+    specs: [['Material', '2.8 mm acrylic'], ['Hinge', 'Two pins on the back edge'], ['Cut-out', 'Joystick opening']] },
+  { id: 'battery', name: 'Battery pack', color: '#295CC7', offset: [0, 0.075, -0.01],
+    fn: 'Powers the ESP32 and the BioAmp through one USB cable, so nothing on the patient’s face is connected to wall power.',
+    specs: [['Cell', 'Li-ion, 21.8 × 92 mm'], ['Output', 'USB-A'], ['Charging', 'Built-in charging port'], ['Rule', 'Battery only while pads are on a face']] },
+  { id: 'cradles', name: 'Battery cradles', color: '#DB8521', offset: [0, 0.04, -0.005],
+    fn: 'Two acrylic supports slotted into the floor that keep the battery from rolling.',
+    specs: [['Material', '2.8 mm acrylic'], ['Count', '2']] },
+  { id: 'perfboard', name: 'Perfboard & standoffs', color: '#B38045', offset: [0, 0.02, 0.035],
+    fn: 'The ESP32 and BioAmp are soldered onto this board. Sturdier than a breadboard.',
+    specs: [['Board', '5 × 7 cm perfboard'], ['Mounting', '4 standoffs, 6 mm']] },
+  { id: 'esp32', name: 'ESP32-S3 (N16R8)', color: '#1A1C1F', offset: [0, 0.065, 0.045],
+    fn: 'The brain. Reads the eye signal about 250 times a second, decides whether a movement was deliberate, and sends simple commands over Wi-Fi.',
+    specs: [['Memory', '16 MB flash · 8 MB PSRAM'], ['Sampling', '≈250 Hz'], ['Eye signal', 'GPIO1'], ['Joystick', 'GPIO4–6'], ['Commands', 'NEXT, SELECT']] },
+  { id: 'usbcable', name: 'USB power cable', color: '#4D5259', offset: [0.045, 0.05, 0.035],
+    fn: 'The single cable carrying battery power into the electronics.',
+    specs: [['From', 'Battery pack USB-A output'], ['Wall power', 'Never connected']] },
+  { id: 'bioamp', name: 'BioAmp EXG Pill', color: '#73339E', offset: [-0.03, 0.08, 0.055],
+    fn: 'Makes the eye signal thousands of times bigger and filters out noise so the ESP32 can read it.',
+    specs: [['Maker', 'Upside Down Labs, New Delhi'], ['Size', '25.4 × 10 mm'], ['Mode', 'EOG'], ['Output', 'OUT → ESP32 GPIO1']] },
+  { id: 'joystick', name: 'PS2 joystick (KY-023)', color: '#2154BF', offset: [0, 0.035, -0.07],
+    fn: 'Backup input. Sends exactly the same commands as the eyes, so the demo never depends on perfect eye control.',
+    specs: [['Inputs', 'X / Y axes + push button'], ['Supply', '3.3 V'], ['Pins', 'GPIO4–6'], ['Mount', 'Through the lid']] },
+  { id: 'electrodes', name: 'Gel electrode leads', color: '#D64545', offset: [-0.045, 0.02, 0.03],
+    fn: 'Three sticky gel pads pick up the small voltage change around the eye when it moves or blinks.',
+    specs: [['Pads', '3 × disposable gel'], ['Placement', 'IN+ / IN− by the eye, REF behind the ear'], ['Connects to', 'BioAmp EXG Pill'], ['Note', 'Leads drawn for illustration; not in the CAD file']] },
+];
+const MODEL_SCALE = 10;   // GLB is in metres; ×10 gives a comfortable scene scale
+
+function hasWebGL() {
+  try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); }
+  catch { return false; }
+}
+
+/** Procedural stand-in built from the same CAD bounds (mm, Z-up), used if the GLB fails to load. */
+function buildProceduralModel(THREE) {
+  const root = new THREE.Group();
+  const groups = {};
+  const part = (id) => { if (!groups[id]) { groups[id] = new THREE.Group(); groups[id].name = id; root.add(groups[id]); } return groups[id]; };
+  const mat = (color, opacity = 1) => new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, transparent: opacity < 1, opacity, side: opacity < 1 ? THREE.DoubleSide : THREE.FrontSide });
+  const toV = (x, y, z) => new THREE.Vector3(x / 1e3, z / 1e3, -y / 1e3);   // CAD mm Z-up → metres Y-up
+  const box = (id, [x0, x1], [y0, y1], [z0, z1], m) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry((x1 - x0) / 1e3, (z1 - z0) / 1e3, (y1 - y0) / 1e3), m);
+    mesh.position.copy(toV((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
+    part(id).add(mesh);
+  };
+  const cyl = (id, r, len, axis, [x, y, z], m) => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r / 1e3, r / 1e3, len / 1e3, 40), m);
+    if (axis === 'x') mesh.rotation.z = Math.PI / 2;
+    if (axis === 'y') mesh.rotation.x = Math.PI / 2;
+    mesh.position.copy(toV(x, y, z));
+    part(id).add(mesh);
+  };
+  const acrylic = mat(0x9ecbe9, 0.28), metal = mat(0xc4c5c9), orange = mat(0xdb8521), dark = mat(0x4d5259), header = mat(0x26272a);
+  // Enclosure: floor + four walls
+  box('enclosure', [-2.8, 147.8], [-2.8, 112.8], [-2.8, 0], acrylic);
+  box('enclosure', [-2.8, 147.8], [-2.8, 0], [0, 29], acrylic);
+  box('enclosure', [-2.8, 147.8], [110, 112.8], [0, 29], acrylic);
+  box('enclosure', [-2.8, 0], [0, 110], [0, 29], acrylic);
+  box('enclosure', [145, 147.8], [0, 110], [0, 29], acrylic);
+  // Lid, hinged open behind the box (as in the v3 "open" CAD)
+  box('lid', [-2.8, 147.8], [127.4, 130.2], [12, 124], acrylic);
+  box('lid', [-5.6, -2.8], [100, 130.2], [10, 40], acrylic);
+  box('lid', [147.8, 150.6], [100, 130.2], [10, 40], acrylic);
+  box('lid', [-5.9, 0.3], [102.5, 107.5], [18.6, 23.4], metal);
+  box('lid', [144.7, 150.9], [102.5, 107.5], [18.6, 23.4], metal);
+  // Battery + cradles
+  box('cradles', [23.6, 26.4], [76, 108], [-2.8, 20], orange);
+  box('cradles', [73.6, 76.4], [76, 108], [-2.8, 20], orange);
+  cyl('battery', 10.9, 92, 'x', [50, 92, 13.9], mat(0x295cc7));
+  box('battery', [96, 128], [85, 99], [10.4, 17.4], dark);
+  // Perfboard + standoffs
+  box('perfboard', [3, 73], [3, 53], [6, 7.6], mat(0xb38045));
+  [[5.5, 5.5], [70.5, 5.5], [5.5, 50.5], [70.5, 50.5]].forEach(([x, y]) => cyl('perfboard', 2.5, 6, 'z', [x, y, 3], metal));
+  // ESP32-S3 dev board, RF shield, headers, USB-C ports, cable plug
+  box('esp32', [10, 73], [8.5, 33.9], [10.1, 11.7], mat(0x1a1c1f));
+  box('esp32', [10, 28], [12.2, 30.2], [11.7, 14.9], metal);
+  box('esp32', [11, 71], [8.5, 11], [7.6, 10.1], header);
+  box('esp32', [11, 71], [31.4, 33.9], [7.6, 10.1], header);
+  box('esp32', [67, 73.5], [11.5, 19.5], [11.7, 14.7], metal);
+  box('esp32', [67, 73.5], [23, 31], [11.7, 14.7], metal);
+  box('usbcable', [73.5, 97], [11, 20], [9.4, 16.4], dark);
+  // BioAmp EXG Pill
+  box('bioamp', [8, 33.4], [37, 47], [10.1, 11.7], mat(0x73339e));
+  box('bioamp', [31, 33.5], [38, 46], [7.6, 10.1], header);
+  // Joystick on the outside of the open lid
+  box('joystick', [108, 134], [130.2, 131.8], [75.2, 108.9], mat(0x2154bf));
+  box('joystick', [113, 129], [131.8, 147], [82.1, 99.8], metal);
+  cyl('joystick', 11, 14, 'y', [121, 154, 91], mat(0x1a1a1c));
+  return root;
+}
+
+/** Three electrode leads from the BioAmp out to gel pads (not in the CAD; illustrative). */
+function buildElectrodeLeads(THREE) {
+  const g = new THREE.Group();
+  g.name = 'electrodes';
+  const toV = (x, y, z) => new THREE.Vector3(x / 1e3, z / 1e3, -y / 1e3);
+  const padMat = new THREE.MeshStandardMaterial({ color: 0xf3f4f6, roughness: 0.85 });
+  const snapMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, roughness: 0.3, metalness: 0.6 });
+  [{ y: 16, color: 0xd64545 }, { y: 42, color: 0xe2b100 }, { y: 68, color: 0x2b2f36 }].forEach(({ y, color }, i) => {
+    const curve = new THREE.CatmullRomCurve3([toV(20, 40 + i * 2, 12), toV(8, 42, 27), toV(-4, 42, 34), toV(-26, (42 + y) / 2, 18), toV(-52, y, 1)]);
+    const lead = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, 0.0009, 8, false), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.0016, 36), padMat);
+    pad.position.copy(toV(-52, y, -2));
+    const snap = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.003, 16), snapMat);
+    snap.position.copy(toV(-52, y, 0));
+    g.add(lead, pad, snap);
+  });
+  return g;
+}
+
+class HardwareViewer {
+  constructor(root) {
+    this.root = root;
+    this.stage = $('[data-viewer-canvas]', root);
+    this.status = $('[data-viewer-status]', root);
+    this.sourceEl = $('[data-viewer-source]', root);
+    this.tip = $('[data-viewer-tip]', root);
+    this.card = $('[data-part-card]', root);
+    this.explodeBtn = $('[data-viewer-explode]', root);
+    this.parts = new Map();      // id → { def, obj, meshes, base }
+    this.selected = null;
+    this.hovered = null;
+    this.exploded = false;
+    this.ready = false;
+
+    this.buildMenu();
+    $('[data-part-close]', root).addEventListener('click', () => this.select(null));
+    $('[data-viewer-reset]', root).addEventListener('click', () => this.resetView());
+    this.explodeBtn.addEventListener('click', () => this.setExploded(!this.exploded));
+    root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.selected) this.select(null); });
+
+    // Lazy-init: build the scene only when the section approaches the viewport.
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); this.init(); } }, { rootMargin: '400px 0px' });
+    io.observe(root);
+  }
+
+  buildMenu() {
+    const ul = $('[data-part-menu]', this.root);
+    PARTS.forEach((p, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<button type="button" aria-pressed="false" data-part="${p.id}"><span class="swatch" style="background:${p.color}"></span>${p.name}<span class="num">${String(i + 1).padStart(2, '0')}</span></button>`;
+      li.firstElementChild.addEventListener('click', () => this.select(this.selected === p.id ? null : p.id));
+      ul.append(li);
+    });
+    this.menuButtons = $$('[data-part]', ul);
+  }
+
+  init() {
+    this.initPromise ??= this.setup();
+    return this.initPromise;
+  }
+
+  async setup() {
+    if (!hasWebGL()) { this.useImageFallback('WebGL isn’t available here, so this is a render of the CAD model. The parts list still works.'); return; }
+    try {
+      const [THREE, { OrbitControls }, { GLTFLoader }, { RoomEnvironment }] = await Promise.all([
+        import('three'),
+        import('three/addons/controls/OrbitControls.js'),
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/environments/RoomEnvironment.js'),
+      ]);
+      this.THREE = THREE;
+      this.createScene(THREE, OrbitControls, RoomEnvironment);
+      let model, source;
+      try {
+        model = (await new GLTFLoader().loadAsync(CONFIG.modelUrl)).scene;
+        source = 'CAD · EqualCare_Box_v3_open.step';
+      } catch (err) {
+        console.warn('[EqualCare] GLB not loaded, using procedural model.', err);
+        model = buildProceduralModel(THREE);
+        source = 'Procedural model (CAD file not loaded)';
+      }
+      model.add(buildElectrodeLeads(THREE));
+      this.mountModel(model);
+      this.sourceEl.textContent = source;
+      this.sourceEl.hidden = false;
+      this.status.remove();
+      this.ready = true;
+      this.applyState(true);
+    } catch (err) {
+      console.error('[EqualCare] 3D viewer failed.', err);
+      this.canvas?.remove();
+      this.useImageFallback('The 3D viewer couldn’t start, so this is a render of the CAD model. The parts list still works.');
+    }
+  }
+
+  useImageFallback(message) {
+    const img = document.createElement('img');
+    img.src = CONFIG.webglFallbackImage;
+    img.alt = 'CAD render of the EqualCare enclosure with the lid off: battery at the back, ESP32 and BioAmp on a perfboard at the front.';
+    this.stage.prepend(img);
+    this.status.remove();
+    $('.viewer-toolbar', this.root).hidden = true;
+    this.sourceEl.textContent = message;
+    this.sourceEl.hidden = false;
+  }
+
+  createScene(THREE, OrbitControls, RoomEnvironment) {
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const canvas = renderer.domElement;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', 'Interactive 3D model of the EqualCare enclosure. Drag to rotate. Keyboard users can select parts from the parts list.');
+    this.stage.prepend(canvas);
+
+    const scene = new THREE.Scene();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(2.5, 5, 3);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    Object.assign(sun.shadow.camera, { left: -2.5, right: 2.5, top: 2.5, bottom: -2.5, near: 0.5, far: 15 });
+    sun.shadow.bias = -0.0005;
+    scene.add(sun, new THREE.HemisphereLight(0xffffff, 0xdfe7ee, 0.6));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.ShadowMaterial({ opacity: 0.13 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 1.4;
+    controls.maxDistance = 8;
+    controls.maxPolarAngle = Math.PI * 0.49;
+
+    Object.assign(this, { renderer, scene, camera, controls, canvas, raycaster: new THREE.Raycaster(), pointer: new THREE.Vector2() });
+
+    new ResizeObserver(() => this.resize()).observe(this.stage);
+    this.resize();
+    watchVisibility(this.stage, (visible) => renderer.setAnimationLoop(visible ? () => this.frame() : null), { threshold: 0 });
+
+    // Picking: hover highlights; a click without dragging selects.
+    let down = null, raf = 0;
+    canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+    canvas.addEventListener('pointerup', (e) => {
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+      const id = this.pick(e.clientX, e.clientY);
+      this.select(id === this.selected ? null : id);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (raf || e.buttons) return;
+      raf = requestAnimationFrame(() => { raf = 0; this.hover(this.pick(e.clientX, e.clientY), e); });
+    });
+    canvas.addEventListener('pointerleave', () => this.hover(null));
+  }
+
+  mountModel(model) {
+    const THREE = this.THREE;
+    model.scale.setScalar(MODEL_SCALE);
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.set(-center.x, -box.min.y, -center.z);
+    this.scene.add(model);
+    this.size = box.getSize(new THREE.Vector3());
+
+    PARTS.forEach((def) => {
+      const obj = model.getObjectByName(def.id);
+      if (!obj) return;
+      const meshes = [];
+      obj.traverse((o) => {
+        if (!o.isMesh) return;
+        o.material = o.material.clone();           // per-part highlight without touching shared materials
+        if (o.material.transparent) { o.material.depthWrite = false; o.renderOrder = 2; }
+        o.castShadow = !o.material.transparent;
+        o.userData.partId = def.id;
+        meshes.push(o);
+      });
+      this.parts.set(def.id, { def, obj, meshes, base: obj.position.clone() });
+    });
+    this.pickables = [...this.parts.values()].flatMap((p) => p.meshes);
+    this.resetView(true);
+  }
+
+  resize() {
+    if (!this.renderer) return;
+    const w = this.stage.clientWidth, h = this.stage.clientHeight;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+
+  frame() { this.controls.update(); this.renderer.render(this.scene, this.camera); }
+
+  pick(x, y) {
+    if (!this.pickables) return null;
+    const r = this.canvas.getBoundingClientRect();
+    this.pointer.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const hits = this.raycaster.intersectObjects(this.pickables, false);
+    if (!hits.length) return null;
+    // Prefer an opaque part behind the clear acrylic, so internals are clickable through the walls.
+    const opaque = hits.find((h) => !h.object.material.transparent);
+    return (opaque || hits[0]).object.userData.partId;
+  }
+
+  hover(id, e) {
+    if (id !== this.hovered) {
+      const prev = this.hovered;
+      this.hovered = id;
+      if (prev) this.paint(prev);
+      if (id) this.paint(id);
+      this.stage.classList.toggle('is-hovering', !!id);
+    }
+    if (id && e) {
+      const r = this.stage.getBoundingClientRect();
+      this.tip.textContent = this.parts.get(id).def.name;
+      this.tip.style.left = `${e.clientX - r.left}px`;
+      this.tip.style.top = `${e.clientY - r.top}px`;
+    }
+    this.tip.classList.toggle('is-visible', !!id);
+  }
+
+  /** Emissive glow + edge outline. Level 1 = hovered, 2 = selected. */
+  paint(id) {
+    const p = this.parts.get(id);
+    if (!p) return;
+    const THREE = this.THREE;
+    const level = id === this.selected ? 2 : id === this.hovered ? 1 : 0;
+    p.meshes.forEach((m) => {
+      m.material.emissive.set(level ? 0x0fa3a3 : 0x000000);
+      m.material.emissiveIntensity = level === 2 ? 0.55 : 0.3;
+      if (level && !m.userData.edges) {
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 35), new THREE.LineBasicMaterial({ color: 0x087c7c, transparent: true, opacity: 0.85 }));
+        edges.raycast = () => {};
+        m.add(edges);
+        m.userData.edges = edges;
+      }
+      if (m.userData.edges) m.userData.edges.visible = level > 0;
+    });
+  }
+
+  /** Move every part to its assembled / exploded / selected position. */
+  applyState(instant = false) {
+    for (const [id, p] of this.parts) {
+      const k = 0.7 * ((this.exploded ? 1 : 0) + (id === this.selected ? (this.exploded ? 0.6 : 1) : 0));
+      const [ox, oy, oz] = p.def.offset;
+      gsap.to(p.obj.position, { x: p.base.x + ox * k, y: p.base.y + oy * k, z: p.base.z + oz * k, duration: instant || reduced() ? 0 : 0.8, ease: 'power3.out', overwrite: true });
+      this.paint(id);
+    }
+  }
+
+  select(id) {
+    this.selected = id;
+    this.menuButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.part === id)));
+    if (id) this.showCard(PARTS.find((p) => p.id === id)); else this.card.hidden = true;
+    if (this.ready) this.applyState();
+  }
+
+  showCard(def) {
+    $('[data-part-index]', this.card).textContent = `Part ${PARTS.indexOf(def) + 1} / ${PARTS.length}`;
+    $('[data-part-name]', this.card).textContent = def.name;
+    $('[data-part-fn]', this.card).textContent = def.fn;
+    $('[data-part-specs]', this.card).replaceChildren(...def.specs.flatMap(([k, v]) => [
+      Object.assign(document.createElement('dt'), { textContent: k }),
+      Object.assign(document.createElement('dd'), { textContent: v }),
+    ]));
+    this.card.hidden = false;
+  }
+
+  setExploded(state) {
+    this.exploded = state;
+    this.explodeBtn.setAttribute('aria-pressed', String(state));
+    this.explodeBtn.textContent = state ? 'Assemble' : 'Explode';
+    if (this.ready) this.applyState();
+  }
+
+  resetView(instant = false) {
+    if (!this.camera) return;
+    const h = this.size ? this.size.y : 1.3;
+    const d = instant || reduced() ? 0 : 0.9;
+    gsap.to(this.camera.position, { x: 2.6, y: 2.3, z: 3.5, duration: d, ease: 'power2.inOut', overwrite: true });
+    gsap.to(this.controls.target, { x: 0, y: h * 0.3, z: 0, duration: d, ease: 'power2.inOut', overwrite: true });
+  }
+
+  /** Called from the hardware diagram: select a part (initialising the scene if needed). */
+  focusPart(id) { this.init(); this.select(id); }
+}
+
+/* ==========================================================================
+   4. Interactive hardware diagram
+   ========================================================================== */
+const BLOCKS = {
+  electrodes: { title: 'Gel electrodes (×3)', tip: 'Sticky gel pads that pick up the tiny voltage change around the eye.', part: 'electrodes',
+    body: 'When the eye moves or blinks, the voltage on the skin around it changes slightly. The pads pick up this tiny signal.',
+    list: ['IN+ and IN− near the eye, REF on a bony spot behind the ear', 'Cheap, disposable, the standard way to record eye signals', 'No surgery or headset needed'] },
+  bioamp: { title: 'BioAmp EXG Pill', tip: 'Amplifies and filters the eye signal.', part: 'bioamp',
+    body: 'A tiny amplifier board by Upside Down Labs. It makes the eye signal thousands of times bigger and filters out noise so the ESP32 can read it.',
+    list: ['25.4 × 10 mm, configured for EOG', 'OUT pin → ESP32 GPIO1', 'Low-cost, made in India, open-source blink examples'] },
+  esp32: { title: 'ESP32-S3 (N16R8)', tip: 'Reads the signal, checks it was deliberate, sends commands over Wi-Fi.', part: 'esp32',
+    body: 'A small computer with built-in Wi-Fi. It reads the eye signal about 250 times a second and turns deliberate movements into simple commands.',
+    list: ['16 MB flash, 8 MB PSRAM', 'Eye on GPIO1, joystick on GPIO4–6: pins that keep reading while Wi-Fi is on', 'Sends NEXT and SELECT to the patient laptop'] },
+  wifi: { title: 'Wi-Fi link', tip: 'Carries commands and request updates between devices.',
+    body: 'The ESP32 sends commands to the patient laptop over Wi-Fi, and the patient and staff laptops exchange requests and acknowledgements over the same local network.',
+    list: ['Local network, no cloud services', 'Each command carries a sequence number so a delayed duplicate can’t select twice'] },
+  patient: { title: 'Patient screen', tip: 'Four big options. Choose, then confirm.',
+    body: 'Shows four large options. A highlight moves between them; a double-blink picks one and a second confirms it, so an ordinary blink never sends a request.',
+    list: ['Large, high-contrast request tiles', 'Works with no mouse or keyboard', 'Shows “Help is coming ✓” when staff respond'] },
+  staff: { title: 'Staff dashboard', tip: 'Request cards with live timers: acknowledge, then resolve.',
+    body: 'Each request is a card with the request type, bed, time and a live timer. Cards beep when new and turn red if left too long.',
+    list: ['Pending → Acknowledged → Resolved', 'Full request history', 'Acknowledging sends confirmation back to the patient'] },
+  battery: { title: 'Battery pack', tip: 'Isolated power for everything on the patient side.', part: 'battery',
+    body: 'A Li-ion cell with its own charging port and a USB-A output. It powers the ESP32 and BioAmp through one USB cable.',
+    list: ['21.8 × 92 mm cell', 'Nothing on the patient’s face touches wall power', 'No charging while pads are on a face'] },
+  joystick: { title: 'PS2 joystick (KY-023)', tip: 'Backup input that sends exactly the same commands.', part: 'joystick',
+    body: 'A thumb stick with two axes and a push button. It sends the same commands as the eyes, so the full system can be demoed even before eye control is tuned.',
+    list: ['Runs on 3.3 V so it can never over-volt the ESP32', 'GPIO4–6', 'Sticks out through the lid'] },
+};
+
+class HardwareDiagram {
+  constructor(root, viewer) {
+    this.root = root;
+    this.viewer = viewer;
+    this.svg = $('[data-diagram-svg]', root);
+    this.wrap = $('.diagram-wrap', root);
+    this.tip = $('[data-hw-tip]', root);
+    this.detail = $('[data-hw-detail]', root);
+    this.blocks = $$('[data-block]', root);
+    this.blocks.forEach((g) => {
+      const id = g.dataset.block;
+      g.addEventListener('pointerenter', () => this.showTip(g));
+      g.addEventListener('focus', () => this.showTip(g));
+      g.addEventListener('pointerleave', () => this.hideTip());
+      g.addEventListener('blur', () => this.hideTip());
+      g.addEventListener('click', () => this.open(id));
+      g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.open(id); } });
+    });
+    this.setupPulses();
+  }
+
+  showTip(g) {
+    const b = BLOCKS[g.dataset.block];
+    this.tip.replaceChildren(Object.assign(document.createElement('strong'), { textContent: b.title }), b.tip);
+    const gr = g.getBoundingClientRect(), wr = this.wrap.getBoundingClientRect();
+    const left = Math.min(Math.max(8, gr.left - wr.left + gr.width / 2 - 120), wr.width - 248);
+    const above = gr.top - wr.top > 90;
+    this.tip.style.left = `${left}px`;
+    this.tip.style.top = above ? `${gr.top - wr.top - 8}px` : `${gr.bottom - wr.top + 8}px`;
+    this.tip.style.transform = above ? 'translateY(-100%)' : 'none';
+    this.tip.classList.add('is-visible');
+  }
+  hideTip() { this.tip.classList.remove('is-visible'); }
+
+  open(id) {
+    const b = BLOCKS[id];
+    this.blocks.forEach((g) => g.classList.toggle('is-active', g.dataset.block === id));
+    const ul = document.createElement('ul');
+    b.list.forEach((t) => ul.append(Object.assign(document.createElement('li'), { textContent: t })));
+    this.detail.replaceChildren(
+      Object.assign(document.createElement('p'), { className: 'eyebrow', textContent: 'Block details' }),
+      Object.assign(document.createElement('h4'), { textContent: b.title }),
+      Object.assign(document.createElement('p'), { textContent: b.body }),
+      ul,
+    );
+    if (!b.part) return;
+    this.viewer.focusPart(b.part);   // highlight it in the 3D scene right away
+    const btn = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-ghost btn-sm', textContent: 'Show it in the 3D model ↓' });
+    btn.addEventListener('click', () => {
+      $('#model').scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth' });
+      $('#model-title').focus({ preventScroll: true });
+    });
+    this.detail.append(btn);
+  }
+
+  /** Signal pulses travelling along the connectors; animates only while visible. */
+  setupPulses() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const layer = $('[data-pulses]', this.svg);
+    const colors = { signal: '#0FA3A3', return: '#16A34A', power: '#D97706', backup: '#7C8FA3' };
+    const pulses = $$('[data-flow]', this.svg).flatMap((path, i) => {
+      const len = path.getTotalLength();
+      return [0, 0.5].map((phase) => {
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('r', '4.5');
+        c.setAttribute('fill', colors[path.dataset.flow]);
+        c.setAttribute('class', 'hw-pulse');
+        c.setAttribute('opacity', '0');
+        layer.append(c);
+        return { c, path, len, phase: phase + i * 0.13 };
+      });
+    });
+    const draw = (t) => pulses.forEach((p) => {
+      const u = ((t / 1000) * (90 / p.len) + p.phase) % 1;
+      const pt = p.path.getPointAtLength(u * p.len);
+      p.c.setAttribute('cx', pt.x);
+      p.c.setAttribute('cy', pt.y);
+      p.c.setAttribute('opacity', Math.sin(u * Math.PI).toFixed(3));
+    });
+    let raf = 0;
+    const loop = (t) => { draw(t); raf = requestAnimationFrame(loop); };
+    watchVisibility(this.svg, (visible) => {
+      cancelAnimationFrame(raf);
+      if (visible && !reduced()) raf = requestAnimationFrame(loop);
+    });
+  }
+}
+
+/* ==========================================================================
+   3. Training-data video (or an illustrative signal animation until configured)
+   ========================================================================== */
+class SignalExplainer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.EVENTS = ['LEFT', 'RIGHT', 'UP', 'DOWN', 'BLINK'];
+    this.SLOT = 1.5;    // seconds per movement
+    this.WINDOW = 6;    // seconds visible
+    this.STATIC_T = 8.2;
+    new ResizeObserver(() => this.resize()).observe(canvas);
+    let raf = 0;
+    const loop = (t) => { this.draw(t / 1000); raf = requestAnimationFrame(loop); };
+    watchVisibility(canvas, (visible) => {
+      cancelAnimationFrame(raf);
+      if (visible && !reduced()) raf = requestAnimationFrame(loop);
+    });
+  }
+
+  resize() {
+    const dpr = Math.min(devicePixelRatio, 2);
+    const { width, height } = this.canvas.getBoundingClientRect();
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.w = width; this.h = height;
+    this.draw(this.STATIC_T);
+  }
+
+  /** Synthetic EOG-like sample at time t (seconds): horizontal, vertical and raw mix. */
+  sample(t) {
+    const slot = Math.floor(t / this.SLOT), local = (t / this.SLOT) % 1;
+    const ev = this.EVENTS[((slot % 5) + 5) % 5];
+    const ss = (a, b, x) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+    const step = ss(0.28, 0.36, local) - ss(0.66, 0.74, local);
+    let h = 0, v = 0;
+    if (ev === 'LEFT') h = -step;
+    if (ev === 'RIGHT') h = step;
+    if (ev === 'UP') v = step;
+    if (ev === 'DOWN') v = -step;
+    if (ev === 'BLINK') v = 1.5 * Math.exp(-(((local - 0.5) / 0.045) ** 2));
+    const noise = 0.11 * Math.sin(t * 97.3) + 0.08 * Math.sin(t * 151.7 + 1.3) + 0.06 * Math.sin(t * 61.1 * (1 + 0.1 * Math.sin(t)));
+    const drift = 0.35 * Math.sin(t * 0.55) + 0.12 * Math.sin(t * 1.7);
+    return { h, v, raw: h * 0.75 + v * 0.55 + noise + drift };
+  }
+
+  draw(now) {
+    const { ctx, w, h } = this;
+    if (!w) return;
+    ctx.clearRect(0, 0, w, h);
+    const pad = 16, bottom = 34, laneH = (h - pad - bottom) / 3, t0 = now - this.WINDOW, span = w - pad * 2;
+    const x = (t) => pad + ((t - t0) / this.WINDOW) * span;
+    ['RAW EOG', 'FILTERED · H (teal) / V (orange)', 'CLASSIFIED DIRECTION'].forEach((name, i) => {
+      const y = pad + i * laneH;
+      ctx.fillStyle = 'rgba(255,255,255,0.035)';
+      ctx.fillRect(pad, y + 3, span, laneH - 6);
+      ctx.fillStyle = '#8FA3B8';
+      ctx.font = '600 10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText(name, pad + 8, y + 17);
+    });
+    const trace = (lane, pick, color) => {
+      const mid = pad + lane * laneH + laneH / 2 + 6;
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.6;
+      for (let px = 0; px <= span; px += 2) {
+        const y = mid - pick(this.sample(t0 + (px / span) * this.WINDOW)) * (laneH / 3);
+        if (px === 0) ctx.moveTo(pad + px, y); else ctx.lineTo(pad + px, y);
+      }
+      ctx.stroke();
+    };
+    trace(0, (s) => s.raw, '#C9D6E3');
+    trace(1, (s) => s.h, '#0FA3A3');
+    trace(1, (s) => s.v, '#F08A5D');
+    // A label chip appears once each movement has been seen
+    const mid = pad + 2 * laneH + laneH / 2 + 4;
+    ctx.font = '700 11px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    for (let k = Math.floor(t0 / this.SLOT); k * this.SLOT <= now; k++) {
+      const center = (k + 0.5) * this.SLOT;
+      if (center > now - 0.15 || center < t0) continue;
+      const ev = this.EVENTS[((k % 5) + 5) % 5], cx = x(center), tw = ctx.measureText(ev).width + 18;
+      ctx.fillStyle = ev === 'BLINK' ? '#B42318' : '#087C7C';
+      ctx.beginPath();
+      ctx.roundRect(cx - tw / 2, mid - 12, tw, 24, 12);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(ev, cx, mid + 4);
+    }
+    ctx.textAlign = 'start';
+  }
+}
+
+function initTrainingMedia() {
+  const video = $('[data-training-video]');
+  const canvas = $('[data-signal-canvas]');
+  if (isFill(CONFIG.trainingVideo)) { video.remove(); new SignalExplainer(canvas); return; }
+  video.dataset.src = CONFIG.trainingVideo;
+  video.dataset.autoplay = '';
+  if (!isFill(CONFIG.trainingPoster)) video.poster = CONFIG.trainingPoster;
+  const track = $('[data-training-track]', video);
+  if (isFill(CONFIG.trainingCaptions)) track.remove(); else track.src = CONFIG.trainingCaptions;
+  video.hidden = false;
+  canvas.remove();
+  $('[data-signal-badge]').remove();
+}
+
+/** Lazy-load videos near the viewport; muted autoplay when ≥50% visible (not with reduced motion, not after a user pause). */
+function initVideos() {
+  const videos = $$('video[data-autoplay]');
+  const loader = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    const v = e.target;
+    if (v.dataset.src && !v.getAttribute('src')) { v.src = v.dataset.src; v.load(); }
+    loader.unobserve(v);
+  }), { rootMargin: '400px 0px' });
+  const player = new IntersectionObserver((entries) => entries.forEach((e) => {
+    const v = e.target;
+    if (e.isIntersecting && e.intersectionRatio >= 0.5) {
+      if (!reduced() && !v.dataset.userPaused && v.paused) v.play().catch(() => {});
+    } else if (!v.paused) { v.dataset.autoPaused = '1'; v.pause(); }
+  }), { threshold: [0, 0.5] });
+  videos.forEach((v) => {
+    v.addEventListener('pause', () => { if (v.dataset.autoPaused) delete v.dataset.autoPaused; else v.dataset.userPaused = '1'; });
+    v.addEventListener('play', () => delete v.dataset.userPaused);
+    loader.observe(v);
+    player.observe(v);
+  });
+}
+
+/* ==========================================================================
+   5. Demo simulation (patient screen + staff dashboard)
+   ========================================================================== */
+
+/* ---- BACKEND HOOK -------------------------------------------------------
+   Both screens talk only through `transport`. Messages follow the contract
+   in the implementation plan:
+     { type: 'request', id, kind: 'water' | 'assistance' | 'discomfort' | 'emergency', bed, ts }
+     { type: 'status',  id, status: 'acknowledged' | 'resolved', ts }
+   LocalTransport loops messages back inside the browser. To connect the real
+   system, set CONFIG.backendEndpoint ([FILL: WebSocket / API endpoint]):
+   SocketTransport then sends every message to that server and dispatches
+   whatever the server broadcasts back. For the Flask + polling setup, write a
+   class with the same send() / 'message' event interface around fetch().
+   ------------------------------------------------------------------------ */
+class LocalTransport extends EventTarget {
+  send(msg) { queueMicrotask(() => this.dispatchEvent(new CustomEvent('message', { detail: msg }))); }
+}
+class SocketTransport extends EventTarget {
+  constructor(url) {
+    super();
+    this.url = url;
+    this.queue = [];
+    this.connect();
+  }
+  connect() {
+    this.ws = new WebSocket(this.url);
+    this.ws.addEventListener('open', () => this.queue.splice(0).forEach((m) => this.ws.send(m)));
+    this.ws.addEventListener('message', (e) => {
+      try { this.dispatchEvent(new CustomEvent('message', { detail: JSON.parse(e.data) })); }
+      catch (err) { console.warn('[EqualCare] Ignoring malformed message.', err); }
+    });
+    this.ws.addEventListener('close', () => setTimeout(() => this.connect(), 2000));
+  }
+  send(msg) {
+    const data = JSON.stringify(msg);
+    if (this.ws.readyState === WebSocket.OPEN) this.ws.send(data); else this.queue.push(data);
+  }
+}
+
+const STATUS = {
+  pending:      { label: 'Pending',      patient: 'Request sent. Waiting for staff…' },
+  acknowledged: { label: 'Acknowledged', patient: 'Help is coming ✓' },
+  resolved:     { label: 'Resolved',     patient: 'Done ✓ Your request was resolved.' },
+};
+
+class DemoSim {
+  constructor(root, transport) {
+    this.root = root;
+    this.transport = transport;
+    this.requests = new Map();
+    this.cards = new Map();
+    this.selected = null;
+    this.latestId = null;
+    this.seq = 0;
+    this.visible = false;
+    this.runToken = 0;
+    this.sound = false;
+
+    this.tiles = $$('[data-kind]', $('[data-tiles]', root));
+    this.confirmBtn = $('[data-demo-confirm]', root);
+    this.status = $('[data-pui-status]', root);
+    this.eyes = $('[data-pui-eyes]', root);
+    this.list = $('[data-req-list]', root);
+    this.empty = $('[data-req-empty]', root);
+    this.count = $('[data-active-count]', root);
+    this.history = $('[data-history]', root);
+    this.autoBtn = $('[data-demo-auto]', root);
+    this.soundBtn = $('[data-demo-sound]', root);
+    fillText($('[data-bed]', root), CONFIG.bedId);
+
+    this.tiles.forEach((t) => {
+      t.addEventListener('click', () => { this.takeOver(); this.select(t.dataset.kind); });
+      t.addEventListener('pointerenter', () => this.gaze(REQUESTS[t.dataset.kind].gaze));
+      t.addEventListener('pointerleave', () => this.gaze(this.selected ? REQUESTS[this.selected].gaze : 'center'));
+    });
+    this.confirmBtn.addEventListener('click', () => { this.takeOver(); this.confirm(); });
+    this.list.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      this.takeOver();
+      this.transport.send({ type: 'status', id: btn.dataset.id, status: btn.dataset.action === 'ack' ? 'acknowledged' : 'resolved', ts: Date.now() });
+    });
+    this.autoBtn.addEventListener('click', () => this.setAuto(!this.auto));
+    this.soundBtn.addEventListener('click', () => {
+      this.sound = !this.sound;
+      this.soundBtn.setAttribute('aria-pressed', String(this.sound));
+      if (this.sound) this.beep();
+    });
+    $('[data-demo-clear]', root).addEventListener('click', () => this.clear());
+    transport.addEventListener('message', (e) => this.onMessage(e.detail));
+
+    setInterval(() => this.tick(), 500);
+    this.setAuto(!reduced());
+    watchVisibility(root, (v) => { this.visible = v; this.setAuto(this.auto); }, { threshold: 0.15 });
+  }
+
+  /** A person took control: stop the scripted loop. */
+  takeOver() { if (this.auto) this.setAuto(false); }
+
+  setAuto(state) {
+    this.auto = state && !reduced();
+    this.autoBtn.setAttribute('aria-pressed', String(this.auto));
+    // Announce changes only when a person is driving, so auto-play doesn't flood screen readers.
+    this.status.setAttribute('aria-live', this.auto ? 'off' : 'polite');
+    this.list.setAttribute('aria-live', this.auto ? 'off' : 'polite');
+    if (this.auto && this.visible) this.runAuto(); else this.runToken++;
+  }
+
+  /** Scripted loop: choose → confirm → acknowledge → resolve, cycling through request types. */
+  async runAuto() {
+    const token = ++this.runToken;
+    const alive = () => token === this.runToken;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const kinds = Object.keys(REQUESTS);
+    let i = 0;
+    await wait(600);
+    while (alive()) {
+      this.select(kinds[i++ % kinds.length]);
+      await wait(1700); if (!alive()) return;
+      this.confirm();
+      const id = this.latestId;
+      await wait(2800); if (!alive()) return;
+      this.transport.send({ type: 'status', id, status: 'acknowledged', ts: Date.now() });
+      await wait(3200); if (!alive()) return;
+      this.transport.send({ type: 'status', id, status: 'resolved', ts: Date.now() });
+      await wait(4200);
+    }
+  }
+
+  gaze(dir) {
+    const [x, y] = GAZE_VECTORS[dir] || GAZE_VECTORS.center;
+    this.eyes.style.setProperty('--gx', x);
+    this.eyes.style.setProperty('--gy', y);
+  }
+
+  blink() {
+    if (reduced()) return;
+    this.eyes.classList.add('is-blinking');
+    setTimeout(() => this.eyes.classList.remove('is-blinking'), 160);
+  }
+
+  /** Choose a request on the patient screen. */
+  select(kind, { fromNavigator = false } = {}) {
+    this.selected = kind;
+    this.tiles.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.kind === kind)));
+    this.confirmBtn.disabled = false;
+    this.gaze(REQUESTS[kind].gaze);
+    this.setPatient('selected', `${REQUESTS[kind].label} selected. Double-blink to confirm.`);
+    if (!fromNavigator) emit('demo:select', { kind });
+  }
+
+  /** Confirm the chosen request and send it to the dashboard. */
+  confirm() {
+    if (!this.selected) return;
+    const kind = this.selected;
+    const id = `REQ-${String(++this.seq).padStart(3, '0')}`;
+    this.latestId = id;
+    this.blink();
+    emit('demo:confirm', { kind });
+    this.tiles.forEach((t) => { t.setAttribute('aria-pressed', 'false'); t.classList.toggle('is-sent', t.dataset.kind === kind); });
+    this.selected = null;
+    this.confirmBtn.disabled = true;
+    this.transport.send({ type: 'request', id, kind, bed: CONFIG.bedId, ts: Date.now() });
+  }
+
+  setPatient(state, text) { this.status.dataset.state = state; this.status.textContent = text; }
+
+  onMessage(msg) {
+    if (msg.type === 'request') {
+      const r = { ...msg, status: 'pending', createdAt: msg.ts };
+      this.requests.set(r.id, r);
+      this.renderCard(r);
+      this.log(r, 'requested');
+      this.beep();
+    } else if (msg.type === 'status') {
+      const r = this.requests.get(msg.id);
+      if (!r || r.status === 'resolved' || r.status === msg.status) return;
+      if (msg.status === 'resolved' && r.status === 'pending') return;   // acknowledge first
+      r.status = msg.status;
+      r[msg.status === 'acknowledged' ? 'ackAt' : 'resolvedAt'] = msg.ts;
+      this.updateCard(r);
+      this.log(r, msg.status);
+      if (msg.status === 'resolved') setTimeout(() => this.removeCard(r.id), 4000);
+    } else return;
+    const r = this.requests.get(msg.id);
+    if (r.id !== this.latestId) return;
+    this.setPatient(r.status, STATUS[r.status].patient);
+    if (r.status === 'resolved') this.tiles.forEach((t) => t.classList.remove('is-sent'));
+  }
+
+  renderCard(r) {
+    const req = REQUESTS[r.kind];
+    const card = document.createElement('article');
+    card.className = 'req-card';
+    card.setAttribute('aria-label', `${req.label} request`);
+    card.innerHTML = `
+      <div class="req-type"></div>
+      <div class="req-meta">Bed <span data-card-bed></span> · <time></time></div>
+      <div class="req-right"><span class="chip" data-chip></span><span class="req-timer" data-timer aria-label="Elapsed time">00:00</span></div>
+      <div class="req-actions">
+        <button type="button" data-action="ack">Acknowledge</button>
+        <button type="button" data-action="resolve" disabled>Resolve</button>
+      </div>`;
+    const type = $('.req-type', card);
+    type.textContent = req.label;
+    if (req.priority) type.insertAdjacentHTML('beforeend', '<span class="prio">PRIORITY</span>');
+    fillText($('[data-card-bed]', card), r.bed);
+    const time = $('time', card);
+    time.dateTime = new Date(r.createdAt).toISOString();
+    time.textContent = fmtClock(r.createdAt);
+    $$('[data-action]', card).forEach((b) => { b.dataset.id = r.id; });
+    this.cards.set(r.id, card);
+    this.list.prepend(card);
+    if (!reduced()) gsap.from(card, { y: -12, opacity: 0, duration: 0.4, ease: 'power2.out' });
+    this.updateCard(r);
+    this.updateCount();
+  }
+
+  updateCard(r) {
+    const card = this.cards.get(r.id);
+    if (!card) return;
+    card.dataset.status = r.status;
+    const chip = $('[data-chip]', card);
+    chip.dataset.status = r.status;
+    chip.textContent = STATUS[r.status].label;
+    $('[data-action="ack"]', card).disabled = r.status !== 'pending';
+    $('[data-action="resolve"]', card).disabled = r.status !== 'acknowledged';
+    this.tick();
+  }
+
+  removeCard(id) {
+    const card = this.cards.get(id);
+    if (!card) return;
+    this.cards.delete(id);
+    card.classList.add('is-leaving');
+    setTimeout(() => card.remove(), reduced() ? 0 : 400);
+    this.updateCount();
+  }
+
+  updateCount() {
+    this.count.textContent = this.cards.size;
+    this.empty.hidden = this.cards.size > 0;
+  }
+
+  /** Live timers + "waiting too long" state. */
+  tick() {
+    const now = Date.now();
+    for (const [id, card] of this.cards) {
+      const r = this.requests.get(id);
+      const elapsed = (r.resolvedAt || now) - r.createdAt;
+      $('[data-timer]', card).textContent = fmtElapsed(elapsed);
+      const late = r.status === 'pending' && elapsed > CONFIG.overdueAfterSeconds * 1000;
+      card.classList.toggle('is-late', late);
+      const chip = $('[data-chip]', card);
+      chip.classList.toggle('is-late', late);
+      chip.textContent = late ? 'Waiting too long' : STATUS[r.status].label;
+    }
+  }
+
+  log(r, event) {
+    $('.h-empty', this.history)?.remove();
+    const label = REQUESTS[r.kind].label;
+    const entry = {
+      requested:    [r.createdAt, `${label} requested`],
+      acknowledged: [r.ackAt, `${label} acknowledged after ${fmtElapsed(r.ackAt - r.createdAt)}`],
+      resolved:     [r.resolvedAt, `${label} resolved in ${fmtElapsed(r.resolvedAt - r.createdAt)}`],
+    }[event];
+    const li = document.createElement('li');
+    li.append(Object.assign(document.createElement('time'), { textContent: fmtClock(entry[0]) }), Object.assign(document.createElement('span'), { textContent: `${r.id} · ${entry[1]}` }));
+    this.history.prepend(li);
+    while (this.history.children.length > 12) this.history.lastChild.remove();
+  }
+
+  clear() {
+    this.runToken++;
+    this.requests.clear();
+    this.cards.forEach((c) => c.remove());
+    this.cards.clear();
+    this.updateCount();
+    this.history.innerHTML = '<li class="h-empty">Nothing yet.</li>';
+    this.tiles.forEach((t) => { t.classList.remove('is-sent'); t.setAttribute('aria-pressed', 'false'); });
+    this.selected = null;
+    this.latestId = null;
+    this.confirmBtn.disabled = true;
+    this.gaze('center');
+    this.setPatient('idle', 'Choose a request.');
+    if (this.auto && this.visible) this.runAuto();
+  }
+
+  /** Short chime for new requests (only once the user turns sound on). */
+  beep() {
+    if (!this.sound) return;
+    this.audio ??= new AudioContext();
+    const o = this.audio.createOscillator(), g = this.audio.createGain(), t = this.audio.currentTime;
+    o.frequency.setValueAtTime(880, t);
+    o.frequency.setValueAtTime(1175, t + 0.12);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(g).connect(this.audio.destination);
+    o.start(t);
+    o.stop(t + 0.32);
+  }
+}
+
+/* ==========================================================================
+   Page chrome: nav, active section, reveal-on-scroll
+   ========================================================================== */
+function initNav() {
+  const header = $('[data-header]');
+  const toggle = $('[data-nav-toggle]');
+  const links = $('[data-nav-links]');
+  const setOpen = (open) => {
+    links.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+  };
+  toggle.addEventListener('click', () => setOpen(!links.classList.contains('is-open')));
+  links.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && links.classList.contains('is-open')) { setOpen(false); toggle.focus(); } });
+  addEventListener('scroll', () => header.classList.toggle('is-scrolled', scrollY > 8), { passive: true });
+
+  const anchors = $$('a', links);
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    anchors.forEach((a) => {
+      if (a.getAttribute('href') === `#${e.target.id}`) a.setAttribute('aria-current', 'true');
+      else a.removeAttribute('aria-current');
+    });
+  }), { rootMargin: '-45% 0px -50% 0px' });
+  $$('main section[id]').forEach((s) => io.observe(s));
+}
+
+function initReveal() {
+  if (reduced()) return;
+  const els = $$('[data-reveal]');
+  gsap.set(els, { autoAlpha: 0, y: 22 });
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (!e.isIntersecting) return;
+    gsap.to(e.target, { autoAlpha: 1, y: 0, duration: 0.7, ease: 'power3.out', delay: Number(e.target.dataset.revealDelay) });
+    io.unobserve(e.target);
+  }), { rootMargin: '0px 0px -8% 0px' });
+  els.forEach((el) => {
+    const siblings = [...el.parentElement.children].filter((c) => c.hasAttribute('data-reveal'));
+    el.dataset.revealDelay = Math.min(siblings.indexOf(el), 4) * 0.08;   // stagger siblings
+    io.observe(el);
+  });
+}
+
+/* ==========================================================================
+   Boot + cross-feature wiring
+   ========================================================================== */
+initNav();
+initReveal();
+initTrainingMedia();
+initVideos();
+
+const eyes = new EyesNavigator($('[data-eyes]'));
+const viewer = new HardwareViewer($('[data-viewer]'));
+new HardwareDiagram($('[data-diagram]'), viewer);
+const transport = isFill(CONFIG.backendEndpoint) ? new LocalTransport() : new SocketTransport(CONFIG.backendEndpoint);
+const demo = new DemoSim($('[data-demo]'), transport);
+
+// The gaze navigator drives the patient screen…
+on('navigator:choose', ({ kind }) => { demo.takeOver(); demo.select(kind, { fromNavigator: true }); });
+on('navigator:confirm', ({ kind }) => { demo.takeOver(); if (demo.selected !== kind) demo.select(kind, { fromNavigator: true }); demo.confirm(); });
+// …and mirrors it when the demo is driven by clicks or auto-play.
+on('demo:select', ({ kind }) => eyes.mirror(kind));
+on('demo:confirm', ({ kind }) => eyes.mirror(kind, { blink: true }));
+</script>
+</body>
+</html>
