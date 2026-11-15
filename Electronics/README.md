@@ -1,1 +1,1 @@
-This folder will contain all of your circuit diagram ,pinout images etc files.
+this folder contains the pinout of all the components and the circuit diagram
