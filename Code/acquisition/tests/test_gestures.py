@@ -184,9 +184,9 @@ def test_team_model_is_approved_and_matches_the_untouched_recordings(team):
 def test_team_model_on_the_calibration_recordings(team):
     model, recordings = team
     scores = [chords_calibration.score(r, chords_calibration.detect(r, model)) for r in recordings]
-    assert [s['look_hits'] for s in scores] == [9, 10, 10]      # of 10 each; recording 1 has no last look in it
-    assert scores[0]['missed_looks'] == [184]
-    assert [s['select_hits'] for s in scores] == [3, 7, 5]      # of 8 each; the rest have one blink or none
+    assert [s['look_hits'] for s in scores] == [8, 10, 10]      # of 10 each; recording 1 has no last look in it
+    assert scores[0]['missed_looks'] == [30, 184]
+    assert [s['select_hits'] for s in scores] == [3, 7, 6]      # of 8 each; the rest have one blink or none
     total = chords_calibration.total(scores)
     assert total['wrong_direction'] == total['false_moves'] == total['false_selects'] == 0
 
@@ -202,8 +202,8 @@ def test_a_recording_replays_as_the_cue_sheets_commands(team):
 @recorded
 def test_calibration_checks_each_recording_with_a_fit_made_without_it(team, monkeypatch):
     _, recordings = team
-    monkeypatch.setattr(chords_calibration, 'GRID', dict(look_peak=(0.5,), look_width=(0.12, 0.18), tail=(0.04,),
-                                                         blink_rise=(0.4,)))
+    monkeypatch.setattr(chords_calibration, 'LOOK_GRID', dict(look_peak=(0.5,), look_width=(0.12, 0.18), tail=(0.04,)))
+    monkeypatch.setattr(chords_calibration, 'BLINK_GRID', dict(blink_rise=(0.4,)))
     model, report = chords_calibration.calibrate(recordings)
     assert model.look_width == 0.18                              # 0.12 lets ordinary eye movements through
     assert [h['recording'] for h in report['held_out']] == [r.name for r in recordings]

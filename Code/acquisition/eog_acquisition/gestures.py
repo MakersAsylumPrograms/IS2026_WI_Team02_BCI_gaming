@@ -74,6 +74,11 @@ class GestureModel:
     blink_recover: float = 0.05  # ... and comes back up by this share of the fall ...
     blink_recover_within: float = 0.45   # ... within this many s of the trough
     blink_turn: float = 0.12     # change that marks a peak or trough as passed
+    # The other blink of a pair may be weaker (often the second: it returns to rest instead of
+    # overshooting). One blink of every pair must still pass the full rule above.
+    blink_weak_rise: float = 0.3
+    blink_weak_fall: float = 0.5
+    blink_firm_rise: float = 0.7   # ... and when one is weak, the other must rise at least this much
     double_min: float = 0.2      # s between the peaks of the two blinks of a double blink
     double_max: float = 0.85
     select_cooldown: float = 1.0  # s after a SELECT in which blinks are ignored
@@ -141,13 +146,19 @@ class BlinkPairs:
         m, fs = model, model.sample_rate
         self.sign, self.rise, self.fall, self.turn = m.blink_polarity, m.blink_rise, m.blink_fall, m.blink_turn
         self.recover = m.blink_recover
+        self.weak_rise, self.weak_fall, self.firm_rise = m.blink_weak_rise, m.blink_weak_fall, m.blink_firm_rise
         self.window, self.fall_within = int(m.blink_window * fs), int(m.blink_fall_within * fs)
         self.recover_within = int(m.blink_recover_within * fs)
         self.pair_min, self.pair_max = m.double_min * fs, m.double_max * fs
         self.cooldown_samples = int(m.select_cooldown * fs)
         self.reset()
 
+    def blink_between(self, first, last):
+        """True if a blink (full or weak) peaked between samples first and last."""
+        return any(first <= n <= last for n in self.peaks)
+
     def reset(self):
+        self.peaks = deque(maxlen=8)         # peak sample of every recent blink, paired or not
         self._recent = deque(maxlen=self.window + 2 * self.fall_within + 2)   # (n, value) for the low point
         self._rising, self._extreme, self._peak = True, None, None
         self._candidate = self._last = None
@@ -173,20 +184,30 @@ class BlinkPairs:
                 if self._peak:
                     pn, pv, pi, rise = self._peak
                     drop = pv - ev
-                    if rise >= self.rise and en - pn <= self.fall_within and drop >= self.fall * rise:
-                        self._candidate = (pn, pv, pi, en, ev, drop)
+                    if en - pn <= self.fall_within:
+                        full = rise >= self.rise and drop >= self.fall * rise
+                        weak = rise >= self.weak_rise and drop >= self.weak_fall * rise
+                        if full or weak:
+                            # 0 = weak, 1 = full, 2 = full and firm enough to pair with a weak one
+                            grade = (2 if rise >= self.firm_rise else 1) if full else 0
+                            self._candidate = (pn, pv, pi, en, ev, drop, grade)
+                            self.peaks.append(pn)
                 self._peak = None
                 self._rising, self._extreme = True, (n, x, index)
         if self._candidate:                                   # a blink, once it comes back up
-            pn, pv, pi, tn, tv, drop = self._candidate
+            pn, pv, pi, tn, tv, drop, grade = self._candidate
             if x - tv >= self.recover * drop:
                 self._candidate = None
                 if n >= self._cooldown:
-                    if self._last and self.pair_min <= pn - self._last[0] <= self.pair_max:
-                        first, self._last = self._last, None
+                    last = self._last
+                    in_reach = last and self.pair_min <= pn - last[0] <= self.pair_max
+                    # two full blinks, or a weak one with a firm full one
+                    if in_reach and min(grade, last[2]) + max(grade, last[2]) >= 2:
+                        self._last = None
                         self._cooldown = n + self.cooldown_samples
-                        return first[1], pv
-                    self._last = (pn, pi)
+                        return last[1], pv
+                    if grade or not in_reach:
+                        self._last = (pn, pi, grade)    # a weak blink never replaces a full one in reach
             elif n - tn > self.recover_within:
                 self._candidate = None
         return None
@@ -217,6 +238,8 @@ class GestureDetector:
         self.filter = ChordsWebFilter(m.adc_bits, fs, m.notch_hz)
         self._samples = {name: int(round(getattr(m, name) * fs)) for name in (
             'max_pulse', 'confirm', 'tail_from', 'away_timeout', 'select_cooldown', 'settle', 'warmup')}
+        self._samples.update(blink_margin=int(0.1 * fs), blink_reach=int(0.5 * fs))   # where a look's own spike is
+        self._look_start = 0
         self._recent = int(0.5 * fs)       # saturation check window
         self._clipped = deque()
         self.blinks = BlinkPairs(m)
@@ -254,6 +277,9 @@ class GestureDetector:
             self._looks_from = n + self._samples['select_cooldown']
         elif events and n < self._looks_from:
             events = []                               # the end of a double blink is not a look
+        elif events and self.blinks.blink_between(self._look_start - self._samples['blink_margin'],
+                                                  self._look_start + self._samples['blink_reach']):
+            events = []                               # that pulse was a blink's spike, not a look
         # Warm-up: movements are followed (so a look back to the centre afterwards is known as one),
         # but nothing is a command yet.
         return events if n >= self._samples['warmup'] else []
@@ -354,5 +380,6 @@ class GestureDetector:
         if pulse['peak'] < m.look_peak or pulse['above'] / m.sample_rate < m.look_width:
             return []
         gesture = 'LEFT' if sign == m.left_polarity else 'RIGHT'
+        self._look_start = pulse['start']
         return [GestureEvent(COMMANDS[gesture], gesture, index, pulse['start_index'], host_time,
                              round(pulse['peak'] * sign, 3))]

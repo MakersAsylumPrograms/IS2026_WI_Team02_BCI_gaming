@@ -628,6 +628,134 @@ def cmd_blink_test(args):
     return 0
 
 
+def cmd_look_test(args):
+    """Left / right / centre test: the terminal asks for looks to each side, says if each was caught, and records."""
+    from .session import _tone
+    print('[1/3] Loading the eye model...', flush=True)
+    model = load_model(args.model)
+    if not isinstance(model, GestureModel):
+        raise ValueError(f'{Path(args.model).name} is not a gesture model.')
+    order = ['LEFT', 'RIGHT'] * (args.trials // 2) + ['LEFT'] * (args.trials % 2)
+    np.random.default_rng(args.seed).shuffle(order)
+    path = Path(args.out or DATA / 'recordings' / f'look-test-{stamp()}')
+    recorder = Recorder(path, port=args.port, in_plus=args.in_plus, notes='left/right/centre look test',
+                        protocol=dict(order=order, hold_seconds=args.hold, centre_seconds=args.centre,
+                                      natural_seconds=args.natural))
+    pipeline = Pipeline(detector=GestureDetector(model), recorder=recorder)
+    events = []                                       # (time.monotonic(), event): the reader thread adds them
+    pipeline.on_event(lambda event: events.append((time.monotonic(), event)))
+    live = Live(args.port, pipeline)
+    results, extra, natural = [], [], []
+    say = lambda text='': print(text, flush=True)              # noqa: E731  plain lines, no screen clearing
+
+    def wait(seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if not live.keep_going():
+                return False
+            time.sleep(0.05)
+        return True
+
+    def guide():
+        say('=' * 66)
+        say(f' LOOK TEST: {len(order)} looks, left and right in random order.')
+        say(' Sit so the screen is in front of you, head still.')
+        say('   "CENTRE"          look at the middle of the screen')
+        say('   "<<< LOOK LEFT"   move only your EYES far left (past the screen edge) and HOLD')
+        say('   "LOOK RIGHT >>>"  the same to the right, HOLD until CENTRE')
+        if args.natural:
+            say(f' At the end: {args.natural:g} s of normal viewing (no commands should appear).')
+        say(' Ctrl+C stops early.')
+        say('=' * 66)
+        say(f' Warming up for {model.warmup:g} s, look at the centre...')
+        if not wait(model.warmup):
+            return
+        seen = 0
+        for trial, side in enumerate(order, 1):
+            pipeline.set_label('CENTER', 0)
+            say(f'\n Trial {trial}/{len(order)}: CENTRE')
+            _tone('CENTER')
+            if not wait(args.centre):
+                return
+            extra.extend(e for _, e in events[seen:] if e.source == 'eog')   # anything while at the centre
+            seen = len(events)
+            pipeline.set_label(side, trial)
+            _tone(side)
+            say('   <<<<<<<<  LOOK LEFT' if side == 'LEFT' else '   LOOK RIGHT  >>>>>>>>')
+            if not wait(args.hold):
+                return
+            pipeline.set_label('CENTER', 0)
+            say('   back to CENTRE')
+            if not wait(0.5):
+                return
+            got = [e for _, e in events[seen:] if e.source == 'eog']
+            seen = len(events)
+            moves = [e.direction for e in got if e.direction in ('LEFT', 'RIGHT')]
+            result = 'caught' if moves[:1] == [side] else ('WRONG' if moves else 'missed')
+            results.append((side, result))
+            command = 'PREVIOUS' if side == 'LEFT' else 'NEXT'
+            say(f'   {side}: ' + (f'CAUGHT -> {command}' if result == 'caught' else result.upper())
+                + (f'   (saw: {", ".join(e.direction for e in got)})' if got and result != 'caught' else '')
+                + f'      [{sum(r == "caught" for _, r in results)}/{len(results)} so far]')
+        if args.natural:
+            pipeline.set_label('CENTER', 0)
+            if not wait(1.0):
+                return
+            seen = len(events)
+            pipeline.set_label('NATURAL', 0)
+            _tone('NATURAL')
+            say(f'\n FREE VIEWING for {args.natural:g} s: look around the screen normally, no commands.')
+            if not wait(args.natural):
+                return
+            natural.extend(e for _, e in events[seen:] if e.source == 'eog')
+        pipeline.set_label('END', 0)
+        live.alive.clear()
+
+    try:
+        say(f'[2/3] Connecting to the board on {args.port} (close EqualCare, Chords-Web, the Arduino '
+            'Serial Monitor and any phone app connected to it first)...')
+        live.start()
+        say('[3/3] Board connected, streaming.')
+        worker = threading.Thread(target=guide, daemon=True)
+        worker.start()
+        if args.plot:
+            from .viewer import LiveView
+            LiveView(pipeline, SAMPLE_RATE, lambda: status_line(pipeline.health.snapshot(), live.device.decoder)
+                     ).run(live.keep_going)
+            live.alive.clear()
+        else:
+            live.wait(quiet=True)
+        worker.join(timeout=2)
+    finally:
+        stats = live.finish()
+        recorder.close(dict(health=pipeline.health.snapshot(), firmware_stats=stats, results=results,
+                            extra_commands=[e.direction for e in extra],
+                            natural_commands=[e.direction for e in natural]))
+    print('\n' + '=' * 66)
+    for side in ('LEFT', 'RIGHT'):
+        mine = [r for s, r in results if s == side]
+        if mine:
+            print(f' {side:5}: caught {mine.count("caught")} of {len(mine)}, wrong direction {mine.count("WRONG")}, '
+                  f'missed {mine.count("missed")}')
+    print(f' Eye commands while at the centre (should be none): {len(extra)}'
+          + (f'  {", ".join(e.direction for e in extra)}' if extra else ''))
+    if args.natural:
+        print(f' Eye commands during {args.natural:g} s of free viewing (should be none): {len(natural)}'
+              + (f'  {", ".join(e.direction for e in natural)}' if natural else ''))
+    print(f' Recording saved: {recorder.path}')
+    print(' Recalibrate with every recording:  python -m eog_acquisition calibrate-eyes')
+    return 0
+
+
+def default_eye_recordings():
+    """Every recording that can calibrate the eye model: the Chords-Web sequence, look tests, blink tests."""
+    folder = DATA / 'recordings'
+    paths = sorted((folder / 'Fresh Calibration Recording Through Chords').glob('*.csv'))
+    paths += sorted(p for pattern in ('look-test-*.csv', 'blink-test-*.csv') for p in folder.glob(pattern)
+                    if p.stat().st_size > 1000)              # skip runs stopped before any data
+    return [str(p) for p in paths]
+
+
 def print_gesture_score(name, s):
     print(f"  {name}: {s['look_hits']}/{s['looks']} cued looks gave the right command, "
           f"{s['wrong_direction']} the wrong one; {s['select_hits']}/{s['double_blinks']} cued double blinks "
@@ -636,8 +764,12 @@ def print_gesture_score(name, s):
 
 
 def cmd_calibrate_chords(args):
-    """Fit the LEFT / RIGHT / DOUBLE BLINK detector to Chords-Web recordings of the calibration sequence."""
-    recordings = [chords_calibration.load_chords_csv(path) for path in args.recordings]
+    """Fit the LEFT / RIGHT / DOUBLE BLINK detector to recordings (Chords-Web sequence, look tests, blink tests)."""
+    paths = args.recordings or default_eye_recordings()
+    print(f'Calibrating on {len(paths)} recordings (a few minutes):')
+    for path in paths:
+        print(f'  {Path(path).name}')
+    recordings = [chords_calibration.load_any(path) for path in paths]
     model, report = chords_calibration.calibrate(recordings)
     out = gestures.save_model(model, args.out, report)
     print(f'Look = pulse over {model.look_peak} for at least {model.look_width} s that stays '
@@ -747,6 +879,24 @@ def main(argv=None):
     p.add_argument('recordings', nargs='+', help='Chords-Web CSV recordings (Counter,Channel1) of the calibration sequence')
     p.add_argument('--out', default=str(gestures.DEFAULT_MODEL), help='model path (default: the team gesture model)')
     p.set_defaults(func=cmd_calibrate_chords)
+
+    p = sub.add_parser('calibrate-eyes', help=cmd_calibrate_chords.__doc__)
+    p.add_argument('recordings', nargs='*', help='recordings to use (default: every Chords-Web, look-test and '
+                                                 'blink-test recording in data/recordings)')
+    p.add_argument('--out', default=str(gestures.DEFAULT_MODEL), help='model path (default: the team gesture model)')
+    p.set_defaults(func=cmd_calibrate_chords)
+
+    p = sub.add_parser('look-test', help=cmd_look_test.__doc__)
+    device_args(p)
+    p.add_argument('--trials', type=int, default=16, help='how many looks, half left and half right (default 16)')
+    p.add_argument('--hold', type=float, default=2.5, help='seconds to hold each look (default 2.5)')
+    p.add_argument('--centre', type=float, default=2.0, help='seconds at the centre before each look (default 2)')
+    p.add_argument('--natural', type=float, default=30.0, help='seconds of free viewing at the end (default 30, 0 = none)')
+    p.add_argument('--seed', type=int, help='left/right order seed (default random)')
+    p.add_argument('--model', default=str(gestures.DEFAULT_MODEL))
+    p.add_argument('--out', help='recording path (default data/recordings/look-test-<time>)')
+    p.add_argument('--plot', action='store_true', help='also show the live signal plot')
+    p.set_defaults(func=cmd_look_test)
 
     p = sub.add_parser('blink-test', help=cmd_blink_test.__doc__)
     device_args(p)

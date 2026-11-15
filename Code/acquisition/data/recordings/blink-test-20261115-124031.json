@@ -1,0 +1,50 @@
+{
+  "format": "equalcare-eog-recording/1",
+  "board": "ESP32-S3",
+  "port": "BLE",
+  "sample_rate": 250,
+  "adc_bits": 12,
+  "units": "raw ADC counts (uncalibrated; not microvolts)",
+  "channel": "1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)",
+  "in_plus_electrode": "left",
+  "started_utc": "2026-11-15T07:10:31.143+00:00",
+  "chordspy": "0.2.2",
+  "notes": "double-blink test",
+  "protocol": {
+    "trials": 10,
+    "window_seconds": 2.5,
+    "rest_seconds": 1.5
+  },
+  "stopped_utc": "2026-11-15T07:11:35.792+00:00",
+  "rows": 12210,
+  "summary": {
+    "health": {
+      "seconds": 48.81,
+      "received": 12210,
+      "missing": 0,
+      "stalls": 0,
+      "loss_percent": 0.0,
+      "device_rate": 250.12,
+      "received_rate": 250.12,
+      "clipped_samples": 32,
+      "clipping_now": false,
+      "flat_now": false,
+      "raw_min": 1318,
+      "raw_max": 2712
+    },
+    "firmware_stats": "STATS missed=0 dropped=0",
+    "results": [
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ],
+    "extra_commands": []
+  }
+}

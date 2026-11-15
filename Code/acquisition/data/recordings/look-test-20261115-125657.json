@@ -1,0 +1,125 @@
+{
+  "format": "equalcare-eog-recording/1",
+  "board": "ESP32-S3",
+  "port": "BLE",
+  "sample_rate": 250,
+  "adc_bits": 12,
+  "units": "raw ADC counts (uncalibrated; not microvolts)",
+  "channel": "1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)",
+  "in_plus_electrode": "left",
+  "started_utc": "2026-11-15T07:26:57.961+00:00",
+  "chordspy": "0.2.2",
+  "notes": "left/right/centre look test",
+  "protocol": {
+    "order": [
+      "RIGHT",
+      "RIGHT",
+      "LEFT",
+      "RIGHT",
+      "LEFT",
+      "LEFT",
+      "LEFT",
+      "RIGHT",
+      "LEFT",
+      "RIGHT",
+      "LEFT",
+      "RIGHT",
+      "LEFT",
+      "RIGHT",
+      "RIGHT",
+      "LEFT"
+    ],
+    "hold_seconds": 2.5,
+    "centre_seconds": 2.0,
+    "natural_seconds": 30.0
+  },
+  "stopped_utc": "2026-11-15T07:29:09.626+00:00",
+  "rows": 28810,
+  "summary": {
+    "health": {
+      "seconds": 115.24,
+      "received": 28810,
+      "missing": 0,
+      "stalls": 0,
+      "loss_percent": 0.0,
+      "device_rate": 250.0,
+      "received_rate": 250.0,
+      "clipped_samples": 796,
+      "clipping_now": false,
+      "flat_now": false,
+      "raw_min": 1559,
+      "raw_max": 2087
+    },
+    "firmware_stats": "STATS missed=0 dropped=0",
+    "results": [
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "missed"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "RIGHT",
+        "caught"
+      ],
+      [
+        "LEFT",
+        "caught"
+      ]
+    ],
+    "extra_commands": [
+      "LEFT"
+    ],
+    "natural_commands": []
+  }
+}
