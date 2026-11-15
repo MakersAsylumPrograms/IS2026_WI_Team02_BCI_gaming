@@ -1,1 +1,3 @@
-This folder will contain all of your mechanical designs/CAD files.
+This folder contains all of mechanical designs/CAD files.
+new box - this is first iteration
+enclouser CAD - final iteration
