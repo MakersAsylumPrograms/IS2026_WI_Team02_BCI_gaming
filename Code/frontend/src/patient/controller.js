@@ -19,6 +19,21 @@ const STATUS_TEXT = {
 };
 const STEP_FOR_STATUS = {PENDING: 0, ACKNOWLEDGED: 1, RESOLVED: 2};   // for the Sent/Seen/Done bar
 
+// Eye calibration / test (the 'eyes' screen). The input process runs it; we show its cues.
+const EYES_POLL_MS = 300;
+const EYES_ACTIVE = ['requested', 'running', 'fitting'];
+const CUE_TITLE = {
+  CENTER: 'Look at the centre', REST: 'Relax', LEFT: '← Look left', RIGHT: 'Look right →',
+  BLINK: 'Blink once', DOUBLE_BLINK: 'Blink twice', NATURAL: 'Look around normally',
+};
+const CUE_DETAIL = {
+  CENTER: 'Keep your head still.', REST: 'Eyes on the centre.',
+  LEFT: 'Move only your eyes, far to the left, and hold until the next cue.',
+  RIGHT: 'Move only your eyes, far to the right, and hold until the next cue.',
+  BLINK: 'One firm blink.', DOUBLE_BLINK: 'Two firm blinks, about half a second apart.',
+  NATURAL: 'Use the screen as you normally would. No commands should appear.',
+};
+
 const DEVICE_TEXT = {
   starting: 'Starting device controls…',
   busy: 'Another patient screen is using the ESP32 controls. Close the other tab or window.',
@@ -35,7 +50,7 @@ export function createPatientApp() {
   // ---- State: everything the screen needs to draw itself -------------
   const state = {
     signedIn: false,
-    screen: 'menu',    // 'menu' | 'confirm' | 'sending' | 'status' | 'uncertain'
+    screen: 'menu',    // 'menu' | 'confirm' | 'sending' | 'status' | 'uncertain' | 'eyes'
     highlight: 0,      // which option is highlighted on the current screen
     chosen: null,      // request type picked on the menu, e.g. 'WATER'
     trackedId: null,   // id of the request shown on the status screen
@@ -44,8 +59,10 @@ export function createPatientApp() {
     notice: '',        // one-off message shown on the menu (e.g. an error)
     device: 'starting',        // device polling status (see input.js)
     deviceConnected: false,    // is the ESP32 sending heartbeats?
+    eyes: null,        // the calibration / test job while the 'eyes' screen is open
   };
   let returnTimer = null;      // timer that goes back to the menu after "Done"
+  let eyesTimer = null;        // polls the calibration job while it runs
   let stopRequestPolling = null, stopDevicePolling = null;
 
   let pending = null;
@@ -77,6 +94,94 @@ export function createPatientApp() {
   }
   function goToMenu() {
     show('menu', Math.max(0, REQUEST_TYPES.findIndex(t => t.type === state.chosen)));
+  }
+
+  // ---- Eye calibration and test ---------------------------------------
+  async function startEyes(mode) {
+    if (!state.signedIn || !state.loaded || state.screen === 'sending') return;
+    try {
+      const {job} = await api.startCalibration(mode);
+      state.eyes = job;
+      show('eyes');
+      pollEyes();
+    } catch (error) {
+      if (error.status === 401) return session.expire();
+      state.notice = error.code === 'DEVICE_OFFLINE'
+        ? 'The eye sensor is not connected. Plug in the board and start EqualCare, then try again.'
+        : `Could not start: ${error.message}`;
+      goToMenu();
+    }
+  }
+
+  function stopEyesPolling() {
+    clearTimeout(eyesTimer);
+    eyesTimer = null;
+  }
+
+  async function pollEyes() {
+    stopEyesPolling();
+    if (state.screen !== 'eyes' || !state.eyes) return;
+    try {
+      const {job} = await api.calibration();
+      if (state.screen !== 'eyes' || !state.eyes) return;
+      if (job?.id === state.eyes.id) state.eyes = job;
+      if (state.eyes.state === 'cancelled') { state.eyes = null; return goToMenu(); }
+      render();
+    } catch (error) {
+      if (error.status === 401) return session.expire();
+    }
+    if (EYES_ACTIVE.includes(state.eyes?.state)) eyesTimer = setTimeout(pollEyes, EYES_POLL_MS);
+  }
+
+  async function leaveEyes() {
+    const job = state.eyes;
+    stopEyesPolling();
+    state.eyes = null;
+    goToMenu();
+    if (job && EYES_ACTIVE.includes(job.state)) {
+      try { await api.cancelCalibration(); } catch { /* it times out on its own */ }
+    }
+  }
+
+  function eyesScreen() {
+    const job = state.eyes;
+    const test = job.mode === 'test';
+    const base = {back: leaveEyes, eyes: job, options: []};
+    if (job.state === 'requested') {
+      return {...base, title: test ? 'Starting the eye test…' : 'Starting calibration…',
+              detail: 'Waiting for the eye sensor.'};
+    }
+    if (job.state === 'fitting') {
+      return {...base, title: 'Working out your settings…', detail: 'This takes a few seconds.'};
+    }
+    if (job.state === 'running' && test) {
+      return {...base, title: 'Try each eye signal',
+              detail: 'Look left, look right, blink once, blink twice. Each one appears below. Nothing is sent.'};
+    }
+    if (job.state === 'running') {
+      return {...base, title: CUE_TITLE[job.label] ?? job.cue ?? '',
+              detail: CUE_DETAIL[job.label] ?? '', cue: job.label};
+    }
+    const menu = {icon: 'BACK', label: 'Back to menu', run: leaveEyes};
+    if (job.state === 'failed') {
+      return {...base, title: test ? 'Eye test stopped' : 'Calibration stopped', detail: job.message || '',
+              warning: true, options: [{icon: 'RETRY', label: 'Try again', run: () => startEyes(job.mode)}, menu]};
+    }
+    if (test) {
+      return {...base, title: 'Eye test finished',
+              detail: job.signals?.length ? 'These are the signals the sensor picked up.' : 'No eye signals were picked up.',
+              options: [{icon: 'EYES', label: 'Calibrate eyes', run: () => startEyes('calibrate')},
+                        {icon: 'RETRY', label: 'Test again', run: () => startEyes('test')}, menu]};
+    }
+    const result = job.result ?? {};
+    const why = (result.shortfalls ?? []).join('; ');
+    return {...base,
+      title: result.passed ? 'Calibration approved ✓' : 'Calibration not approved',
+      detail: result.passed ? 'Your eyes now control the screen with these settings.'
+        : `The previous settings stay in use. ${why.charAt(0).toUpperCase()}${why.slice(1)}.`,
+      warning: !result.passed,
+      options: [{icon: 'EYES', label: 'Test my eyes', run: () => startEyes('test')},
+                {icon: 'RETRY', label: 'Calibrate again', run: () => startEyes('calibrate')}, menu]};
   }
 
   // SCREENS — each returns {title, detail, options, back, ...}
@@ -111,6 +216,8 @@ export function createPatientApp() {
         back: goToMenu,
       };
     }
+
+    if (state.screen === 'eyes' && state.eyes) return eyesScreen();
 
     if (state.screen === 'sending') {
       return {title: 'Sending…', detail: `Sending your ${chosen.label} request.`, type: state.chosen,
@@ -196,6 +303,8 @@ export function createPatientApp() {
     if (!state.signedIn || !state.loaded) return;
     const screen = currentScreen();
     const count = screen.options.length;
+    // While the eyes are being calibrated or tested, eye and joystick input is the thing being measured.
+    if (state.screen === 'eyes' && EYES_ACTIVE.includes(state.eyes?.state) && command !== BACK) return;
 
     // Mouse click: move the highlight to the clicked option first.
     if (detail.index !== undefined && detail.index < count) state.highlight = detail.index;
@@ -300,6 +409,8 @@ export function createPatientApp() {
     onSignOut() {
       state.signedIn = false;
       clearTimeout(returnTimer);
+      stopEyesPolling();
+      state.eyes = null;
       stopRequestPolling?.();
       stopDevicePolling?.();
     },
@@ -311,5 +422,6 @@ export function createPatientApp() {
     connection,
     view,
     click: index => input.click(index),
+    startEyes,
   };
 }

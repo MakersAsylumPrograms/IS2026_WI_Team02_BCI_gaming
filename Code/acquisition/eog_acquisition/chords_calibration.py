@@ -112,6 +112,11 @@ class PromptedRecording:
         return out
 
 
+def file_hash(path):
+    """SHA-256 of a recording with line endings normalised, so a Windows checkout (CRLF) hashes the same."""
+    return hashlib.sha256(Path(path).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+
+
 def load_chords_csv(path):
     path = Path(path)
     with open(path, newline='', encoding='utf-8-sig') as handle:
@@ -121,7 +126,7 @@ def load_chords_csv(path):
     counter = np.array([int(r['Counter']) for r in rows])
     gap = np.concatenate([[0], (np.diff(counter) - 1) % 256])
     return ChordsRecording(path.stem, np.array([float(r['Channel1']) for r in rows]),
-                           np.arange(len(rows)) + np.cumsum(gap), gap, hashlib.sha256(path.read_bytes()).hexdigest())
+                           np.arange(len(rows)) + np.cumsum(gap), gap, file_hash(path))
 
 
 def load_prompted(path):
@@ -138,7 +143,7 @@ def load_prompted(path):
         values[i] = chain.process(int(raw))
     clipped = (r.raw <= 8) | (r.raw >= 4087)
     return PromptedRecording(path.stem, values, r.index, breaks.astype(int), clipped, list(r.label), r.trial,
-                             hashlib.sha256(path.read_bytes()).hexdigest(), r.sample_rate)
+                             file_hash(path), r.sample_rate)
 
 
 def load_any(path):

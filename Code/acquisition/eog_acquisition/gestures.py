@@ -88,11 +88,6 @@ class GestureModel:
     warmup: float = 3.0          # s without commands after start or any gap in the data
     validation: dict = None
 
-    @property
-    def threshold(self):
-        """The band the live plot draws (same attribute as CycleModel)."""
-        return self.look_peak
-
     def to_dict(self):
         return dict(format=FORMAT, **asdict(self))
 
@@ -151,6 +146,7 @@ class BlinkPairs:
         self.recover_within = int(m.blink_recover_within * fs)
         self.pair_min, self.pair_max = m.double_min * fs, m.double_max * fs
         self.cooldown_samples = int(m.select_cooldown * fs)
+        self.count = 0                       # blinks seen so far, single or paired; never reset
         self.reset()
 
     def blink_between(self, first, last):
@@ -192,6 +188,7 @@ class BlinkPairs:
                             grade = (2 if rise >= self.firm_rise else 1) if full else 0
                             self._candidate = (pn, pv, pi, en, ev, drop, grade)
                             self.peaks.append(pn)
+                            self.count += 1
                 self._peak = None
                 self._rising, self._extreme = True, (n, x, index)
         if self._candidate:                                   # a blink, once it comes back up
@@ -227,10 +224,9 @@ class GestureEvent:
 class GestureDetector:
     """Feed samples in order with step() (raw ADC) or step_filtered() (Chords-Web values).
 
-    Each call returns a list with 0 or 1 GestureEvent. `value`, `reference`, `state`, `model` and
-    reset() are the attributes Pipeline and the live plot already use on CycleDetector.
+    Each call returns a list with 0 or 1 GestureEvent. Pipeline and the live plot read `value`
+    (the filtered signal), `state` and `model`; `blinks.count` counts every blink, paired or not.
     """
-    reference = 0.0
 
     def __init__(self, model=None):
         self.model = m = model or GestureModel()

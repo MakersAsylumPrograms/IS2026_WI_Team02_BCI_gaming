@@ -77,7 +77,7 @@ class BLEEOGDevice:
             from bleak import BleakClient, BleakScanner
         except ImportError as exc:
             raise DeviceError('Bluetooth needs the bleak package (installed with chordspy). '
-                              'Run Code/acquisition/setup.ps1 again.') from exc
+                              'Start-EqualCare.cmd installs it; run it once with internet.') from exc
 
         async def connect():
             print(f'[bluetooth] Looking for {self.target} (up to {SCAN_SECONDS:.0f} s)...', flush=True)

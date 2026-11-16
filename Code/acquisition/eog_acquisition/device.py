@@ -14,13 +14,21 @@ from .chords_compat import Chords_USB
 
 from .protocol import BAUD_RATE, BOARD_ID, NUM_SLOTS, RESOLUTION_BITS, SAMPLE_RATE, Sequencer, StreamDecoder
 
-DEFAULT_PORT = 'COM7'
+DEFAULT_PORT = 'auto'   # the first USB port the firmware answers on, else Bluetooth (cli.open_device)
+BRIDGES = (0x10C4, 0x1A86, 0x303A, 0x0403)   # USB vendor ids: CP210x, CH34x, Espressif, FTDI
 NO_DATA_SECONDS = 1.0   # streaming but silent this long: report it
 DRAIN_SECONDS = 0.3     # after STOP, keep reading until quiet this long
 
 
 class DeviceError(RuntimeError):
     pass
+
+
+def usb_serial_ports():
+    """USB serial ports, the usual ESP32 USB-to-UART bridges first. Bluetooth and built-in ports are skipped."""
+    from serial.tools import list_ports
+    ports = [p for p in list_ports.comports() if p.vid is not None]
+    return [p.device for p in sorted(ports, key=lambda p: (p.vid not in BRIDGES, p.device))]
 
 
 class ChordsUSBESP32S3(Chords_USB):

@@ -6,11 +6,14 @@ Same device contract as Code/backend/simulate_device.py and the ESP32 firmware:
   Authorization: Bearer <DEVICE_TOKEN>
 
 Eye gestures (gestures.py) carry their own command, as source 'eog': look LEFT -> PREVIOUS, look
-RIGHT -> NEXT, double blink -> SELECT. A CYCLE from an old direction-free model becomes `command`
-(PREVIOUS by default). Joystick events are sent with their own command (NEXT / PREVIOUS / SELECT)
-as source 'joystick'. A command that cannot be
-delivered within FRESH_FOR seconds is dropped, never delivered late. Sending happens on a
-background thread, so a slow or absent backend never stalls the serial reader.
+RIGHT -> NEXT, double blink -> SELECT. Joystick events are sent with their own command (NEXT /
+PREVIOUS / SELECT) as source 'joystick'. A command that cannot be delivered within FRESH_FOR
+seconds is dropped, never delivered late. Sending happens on a background thread, so a slow or
+absent backend never stalls the serial reader.
+
+Eye calibration requested from the patient screen:
+  GET /api/v1/calibration/device   polled every POLL_EVERY s; on_calibration(job) gets each change
+  PUT /api/v1/calibration/device   report(...) sends the current cue, progress and result
 """
 import json
 import os
@@ -24,10 +27,11 @@ from pathlib import Path
 
 CREDENTIALS = Path(__file__).resolve().parents[2] / 'backend' / 'instance' / 'credentials.json'
 DEFAULT_SERVER = 'http://127.0.0.1:8000'
-COMMANDS = ('NEXT', 'PREVIOUS')
+COMMANDS = ('NEXT', 'PREVIOUS', 'SELECT')
 FRESH_FOR = 1.6          # seconds; like the firmware, never deliver stale input late
 HEARTBEAT_EVERY = 5.0
 TIMEOUT = 0.4
+POLL_EVERY = 0.5
 
 
 def device_credentials(path=CREDENTIALS):
@@ -44,32 +48,47 @@ def device_credentials(path=CREDENTIALS):
 
 
 class DashboardLink:
-    def __init__(self, server=DEFAULT_SERVER, device_id=None, token=None, command='PREVIOUS', say=print):
-        if command not in COMMANDS:
-            raise ValueError(f'command must be one of {COMMANDS}')
+    def __init__(self, server=DEFAULT_SERVER, device_id=None, token=None, say=print):
         if token is None:
             device_id, token = device_credentials()
-        self.server, self.device_id, self.token, self.command = server.rstrip('/'), device_id, token, command
+        self.server, self.device_id, self.token = server.rstrip('/'), device_id, token
         self.say = say
         self.boot_id, self.seq = str(uuid.uuid4()), 0
         self.sent = self.dropped = 0
         self._queue = queue.Queue(maxsize=32)
         self._stop = threading.Event()
         self._threads = []
+        self._on_calibration = None
 
-    def _post(self, path, data):
-        request = urllib.request.Request(self.server + '/api/v1' + path, data=json.dumps(data).encode(),
+    def _call(self, method, path, data=None):
+        request = urllib.request.Request(self.server + '/api/v1' + path, method=method,
+                                         data=None if data is None else json.dumps(data).encode(),
                                          headers={'Content-Type': 'application/json',
                                                   'Authorization': 'Bearer ' + self.token})
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return json.load(response)
+
+    def _post(self, path, data):
+        return self._call('POST', path, data)
+
+    def on_calibration(self, handler):
+        """handler(job) for every change of the calibration job the patient screen asked for (None = no job)."""
+        self._on_calibration = handler
+
+    def report(self, job_id, **fields):
+        """Tell the patient screen how the calibration is going; False if the backend did not take it."""
+        try:
+            self._call('PUT', '/calibration/device', dict(id=job_id, **fields))
+            return True
+        except OSError:
+            return False
 
     def check(self):
         """One heartbeat now; raises if the backend is unreachable or rejects this device."""
         self._post('/heartbeat', {'device_id': self.device_id})
 
     def start(self):
-        for target in (self._heartbeat, self._sender):
+        for target in (self._heartbeat, self._sender, self._calibration_poll):
             thread = threading.Thread(target=target, daemon=True)
             thread.start()
             self._threads.append(thread)
@@ -84,13 +103,10 @@ class DashboardLink:
         for thread in self._threads:
             thread.join(timeout=2)
 
-    def send(self, event=None):
-        """Queue one dashboard command for an eye event (gesture or CYCLE) or a JoystickEvent."""
-        source = getattr(event, 'source', 'eog')
-        command = getattr(event, 'command', 'CYCLE')
-        if source == 'eog' and command == 'CYCLE':       # the direction-free command of the old CYCLE models
-            command = self.command
-        if source not in ('eog', 'joystick') or command not in ('NEXT', 'PREVIOUS', 'SELECT'):
+    def send(self, event):
+        """Queue one dashboard command for a GestureEvent or a JoystickEvent."""
+        source, command = event.source, event.command
+        if source not in ('eog', 'joystick') or command not in COMMANDS:
             raise ValueError('Unsupported dashboard event')
         if self._stop.is_set():
             return
@@ -111,6 +127,23 @@ class DashboardLink:
                     self.say(f'[dashboard] heartbeat failed ({exc}); is the backend running at {self.server}?')
                     warned = True
             self._stop.wait(HEARTBEAT_EVERY)
+
+    def _calibration_poll(self):
+        last = None
+        while not self._stop.is_set():
+            if self._on_calibration is not None:
+                try:
+                    job = self._call('GET', '/calibration/device').get('job')
+                except (OSError, ValueError):
+                    job = last                            # backend busy or restarting: keep what we had
+                key = job and (job['id'], job['state'])
+                if key != (last and (last['id'], last['state'])):
+                    last = job
+                    try:
+                        self._on_calibration(job)
+                    except Exception as exc:              # never let a handler bug stop the poll
+                        self.say(f'[calibration] {exc}')
+            self._stop.wait(POLL_EVERY)
 
     def _sender(self):
         while not self._stop.is_set():

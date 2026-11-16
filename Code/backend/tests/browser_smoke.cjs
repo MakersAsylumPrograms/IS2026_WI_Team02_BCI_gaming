@@ -10,7 +10,7 @@ const {chromium} = require('playwright');
 const {spawn} = require('node:child_process');
 const path = require('node:path');
 const assert = require('node:assert/strict');
-const python = process.env.PYTHON || path.resolve(__dirname, '../.venv/Scripts/python.exe');
+const python = process.env.PYTHON || path.resolve(__dirname, process.platform === 'win32' ? '../.venv/Scripts/python.exe' : '../.venv/bin/python');
 const code = `
 import tempfile
 from pathlib import Path
@@ -38,7 +38,7 @@ const DEBOUNCE = 800;   // a little more than SELECT_DEBOUNCE_MS in input.js
   server.stderr.on('data', data => process.stderr.write(data));
   await until(() => /PORT=(\d+)/.test(output), 'server startup');
   const base = 'http://127.0.0.1:' + output.match(/PORT=(\d+)/)[1];
-  browser = await chromium.launch({channel:'msedge',headless:true});
+  browser = await chromium.launch({headless:true, ...(process.platform === 'win32' ? {channel:'msedge'} : {})});   // Edge ships with Windows
   const patientContext = await browser.newContext();
   const staffContext = await browser.newContext();
   const patient = await patientContext.newPage(), staff = await staffContext.newPage();

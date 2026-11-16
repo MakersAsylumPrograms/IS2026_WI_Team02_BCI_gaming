@@ -14,9 +14,10 @@ import webbrowser
 
 ROOT = Path(__file__).resolve().parents[1]
 CODE = ROOT / 'Code'
-# The gesture model carries its own passed evaluation, so eye commands reach the dashboard without
-# the provisional override. Set allow_provisional_eog only to try a model that has not passed.
-DEFAULTS = dict(port='COM7', server='http://127.0.0.1:8000',
+RETRY_INPUT_AFTER = 10   # seconds; the board was missing or unplugged: look for it again
+# port 'auto': the first USB port the board answers on, else Bluetooth. The gesture model carries its own
+# passed check, so eye commands are sent; allow_provisional_eog sends them from a model that has not passed.
+DEFAULTS = dict(port='auto', server='http://127.0.0.1:8000',
                 model='Code/acquisition/models/eog-gestures.json', plot=True,
                 open_browser=True, allow_provisional_eog=False)
 
@@ -155,27 +156,37 @@ def main():
             time.sleep(0.2)
         print('[ready] Backend healthy. Patient: http://127.0.0.1:8000/patient/', flush=True)
         print('[ready] Staff: http://THIS-LAPTOP-LAN-IP:8000/staff/', flush=True)
-        print(f'[ready] Starting EOG + joystick on {settings["port"]}. Logs: {log_path}', flush=True)
         command = [acquisition_python, '-m', 'eog_acquisition', 'run', '--dashboard',
                    '--port', settings['port'], '--model', settings['model'], '--server', settings['server']]
         if settings['plot']:
             command.append('--plot')
         if settings['allow_provisional_eog']:
             command.append('--allow-provisional-eog')
-            print('[PROVISIONAL EOG] Prototype navigation enabled; independent accuracy is unverified.', flush=True)
-        acquisition, reader = start(command, CODE / 'acquisition', 'input', log)
-        children.append((acquisition, reader))
+            print('[PROVISIONAL EOG] Eye commands are sent although the model has not passed its check.', flush=True)
         if settings['open_browser']:
             webbrowser.open(settings['server'] + '/patient/')
-        print('[running] Keep this window open. Ctrl+C stops both processes.', flush=True)
-        while acquisition.poll() is None:
-            if backend.poll() is not None:
-                raise RuntimeError('Backend stopped. Inputs stopped to prevent stale delivery.')
-            time.sleep(0.2)
-        if acquisition.returncode:
-            raise RuntimeError('Input process stopped with an error. Check COM7, firmware, model and output above.')
-        print('[stopped] Input session finished. Shutting down backend.', flush=True)
-        return 0
+        print(f'[ready] Logs: {log_path}. Keep this window open; Ctrl+C stops everything.', flush=True)
+        while True:
+            print(f'[ready] Starting eyes + joystick (port {settings["port"]}).', flush=True)
+            acquisition, reader = start(command, CODE / 'acquisition', 'input', log)
+            children.append((acquisition, reader))
+            while acquisition.poll() is None:
+                if backend.poll() is not None:
+                    raise RuntimeError('Backend stopped. Inputs stopped to prevent stale delivery.')
+                time.sleep(0.2)
+            children.remove((acquisition, reader))
+            reader.join(timeout=2)
+            if not acquisition.returncode:
+                print('[stopped] Input session finished (plot window closed). Shutting down.', flush=True)
+                return 0
+            # No board, or it was unplugged: the screens keep working with keyboard and mouse.
+            print(f'[input] Eyes and joystick are not running (see the message above). The screens still work '
+                  f'with keyboard and mouse. Trying again in {RETRY_INPUT_AFTER} s.', flush=True)
+            deadline = time.monotonic() + RETRY_INPUT_AFTER
+            while time.monotonic() < deadline:
+                if backend.poll() is not None:
+                    raise RuntimeError('Backend stopped.')
+                time.sleep(0.2)
     except KeyboardInterrupt:
         print('\n[stopping] Closing this session.', flush=True)
         return 0
