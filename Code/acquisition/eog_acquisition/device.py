@@ -66,7 +66,6 @@ class EOGDevice:
         self._thread = None
         self._stop = threading.Event()
         self._stop_requested_at = None
-        self.samples_delivered = 0
         self.error = None
 
     # ---- connection -------------------------------------------------------------
@@ -168,7 +167,6 @@ class EOGDevice:
                 packets = self.decoder.feed(data)
                 if packets:
                     samples = [self.sequencer.next(packet, now) for packet in packets]
-                    self.samples_delivered += len(samples)
                     try:
                         sink(samples)
                     except Exception as exc:

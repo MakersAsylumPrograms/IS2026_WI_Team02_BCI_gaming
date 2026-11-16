@@ -96,7 +96,6 @@ class ProcessedSample:
     sample: object      # protocol.Sample (raw, unchanged)
     filtered: float     # 0.5-20 Hz band-passed ADC counts
     clipped: bool
-    usable: bool        # filter warmed up and not clipped
     label: str          # protocol label active when the sample arrived ('' outside sessions)
     trial: int
     ready: bool = True  # filter warmed up (no recent start or discontinuity)
@@ -171,7 +170,7 @@ class Pipeline:
             eye = detector.value
         if joystick:
             events = events + joystick.update(sample)
-        processed = ProcessedSample(sample, filtered, clipped, ready and not clipped, label, trial, ready, eye)
+        processed = ProcessedSample(sample, filtered, clipped, label, trial, ready, eye)
         if recorder:
             recorder.write(processed)
         self.processed += 1

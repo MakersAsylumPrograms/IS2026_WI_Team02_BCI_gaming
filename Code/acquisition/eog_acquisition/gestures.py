@@ -59,7 +59,7 @@ class GestureModel:
     look_width: float = 0.18     # ... and beyond `onset` for at least this long (s)
     # Blinks, as the look detector sees them: a spike whose opposite swing is deep and dies away.
     # These only keep blinks from counting as looks; SELECT comes from the blink_* rules below.
-    blink_peak: float = 0.45     # a spike this tall with such a swing is a blink, not a movement
+    blink_peak: float = 0.45     # unused since 2026-11-14 (BlinkPairs replaced it); kept so saved models keep their id
     rebound: float = 0.25        # the swing after it is at least this deep ...
     rebound_ratio: float = 0.3   # ... and at least this share of the spike ...
     recover: float = 0.5         # ... and less than this share of it is left at the end of the watch
@@ -252,7 +252,6 @@ class GestureDetector:
         self.value = 0.0
         self.gaze = 0                # side the eyes are on: sign of the pulse that took them there, 0 = centre
         self._away_size = 0.0        # size of that pulse, to recognise the way back
-        self._last_blink = None
         self._cooldown = 0
 
     def step(self, raw, clipped=False, index=0, host_time=0.0):
@@ -359,7 +358,7 @@ class GestureDetector:
         return self._dip >= max(m.rebound, m.rebound_ratio * self._pulse['peak']) and left < m.recover * self._dip
 
     def _distrust(self):
-        self.state, self._quiet, self.gaze, self._last_blink = 'unsettled', 0, 0, None
+        self.state, self._quiet, self.gaze = 'unsettled', 0, 0
 
     def _blink(self, n, index, host_time):
         """A spike with its rebound: never a look. SELECT is decided by BlinkPairs."""

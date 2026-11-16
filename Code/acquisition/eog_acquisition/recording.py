@@ -1,4 +1,4 @@
-"""Recordings (raw samples + labels), their metadata, CYCLE event logs and replay.
+"""Recordings (raw samples + the prompt shown at each), their metadata, and event logs.
 
 A recording is two files:
   <name>.csv   sample_index,counter,raw,host_time,gap_before,stall,label,trial
@@ -105,15 +105,8 @@ def load_recording(path):
                      [r['label'] for r in rows], column('trial', int))
 
 
-def replay(recording, pipeline):
-    """Run a recording through a pipeline exactly as live samples would go."""
-    for sample, tag in recording.samples():
-        pipeline.process(sample, tag)
-    return pipeline
-
-
 class EventLog:
-    """Appends emitted eye (CYCLE) and joystick events to a CSV file."""
+    """Appends emitted eye and joystick events to a CSV file."""
 
     def __init__(self, path):
         self.path = Path(path)

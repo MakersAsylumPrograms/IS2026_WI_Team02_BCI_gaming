@@ -248,19 +248,24 @@ def cmd_view(args):
 
 
 # ---- eyes ------------------------------------------------------------------------------
-def terminal_report(fields, _last={}):
-    """Print a guided sequence's progress: each new cue on its own line, the result at the end."""
-    if fields.get('signals') is not None:              # test-eyes: one line per signal
-        seen = fields['signals']
-        if seen and seen[-1] is not _last.get('signal'):
-            _last['signal'] = seen[-1]
-            print(f"   >>> {seen[-1]['kind'].replace('_', ' ')}", flush=True)
-        return
-    key = (fields.get('state'), fields.get('round'), fields.get('step'))
-    if key != _last.get('key') and fields.get('cue'):
-        _last['key'] = key
-        where = f"round {fields['round']}/{fields['rounds']}  " if fields.get('round') else ''
-        print(f"   {where}{fields['cue'].upper()}", flush=True)
+class TerminalReport:
+    """Prints a guided sequence's progress: each new cue, or each new eye signal, on its own line."""
+
+    def __init__(self):
+        self.key = self.signal = None
+
+    def __call__(self, fields):
+        if fields.get('signals') is not None:              # test-eyes
+            seen = fields['signals']
+            if seen and seen[-1] is not self.signal:
+                self.signal = seen[-1]
+                print(f"   >>> {self.signal['kind'].replace('_', ' ')}", flush=True)
+            return
+        key = (fields.get('state'), fields.get('round'), fields.get('step'))
+        if key != self.key and fields.get('cue'):
+            self.key = key
+            where = f"round {fields['round']}/{fields['rounds']}  " if fields.get('round') else ''
+            print(f"   {where}{fields['cue'].upper()}", flush=True)
 
 
 def print_result(result):
@@ -289,7 +294,7 @@ def cmd_calibrate_eyes(args):
     outcome = {}
 
     def worker(keep_going):
-        outcome['result'], _ = guided.calibrate(pipeline, args.model, terminal_report, keep_going,
+        outcome['result'], _ = guided.calibrate(pipeline, args.model, TerminalReport(), keep_going,
                                                 port=args.port, in_plus=args.in_plus, seed=args.seed)
 
     stream(args, pipeline, worker, plot=args.plot)
@@ -306,7 +311,7 @@ def cmd_test_eyes(args):
     pipeline = Pipeline(detector=GestureDetector(gestures.load_model(args.model)))
     print(f'Eye test for {args.seconds:g} s: look left, look right, blink once, blink twice. '
           'Each signal is printed as the detector sees it. Ctrl+C stops.')
-    stream(args, pipeline, lambda keep_going: guided.watch(pipeline, args.seconds, terminal_report, keep_going),
+    stream(args, pipeline, lambda keep_going: guided.watch(pipeline, args.seconds, TerminalReport(), keep_going),
            plot=args.plot)
     return 0
 

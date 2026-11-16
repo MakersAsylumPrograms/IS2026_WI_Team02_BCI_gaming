@@ -1,6 +1,5 @@
 """LEFT / RIGHT / DOUBLE BLINK: the Chords-Web filter, the detector on Pill-shaped raw signals,
 and the team model on the Chords-Web recordings it was calibrated from."""
-import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path

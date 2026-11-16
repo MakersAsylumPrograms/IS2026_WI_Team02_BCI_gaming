@@ -235,7 +235,6 @@ class CalibrationControl:
     def __init__(self, pipeline, link, model_path, port='', in_plus='left', test_seconds=30.0, say=print):
         self.pipeline, self.link, self.model_path = pipeline, link, model_path
         self.port, self.in_plus, self.test_seconds, self.say = port, in_plus, test_seconds, say
-        self._job = None
         self._cancel = threading.Event()
         self._thread = None
 
@@ -248,7 +247,6 @@ class CalibrationControl:
             self._cancel.set()
         elif job['state'] == 'requested' and not self.busy:
             self._cancel.clear()
-            self._job = job
             self._thread = threading.Thread(target=self._run, args=(job,), name='eye-calibration', daemon=True)
             self._thread.start()
 

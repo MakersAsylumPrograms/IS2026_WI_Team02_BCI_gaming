@@ -7,8 +7,8 @@ Two kinds of recording are accepted:
   from the cue sheet the person followed by the clock (SEQUENCE, copied from
   `Calibration Sequence.xlsx`), so a look counts for its cue if it starts up to LOOK_EARLY
   seconds before the cue or any time until just after its hold ends.
-* This package's own recordings (`sample_index,...,raw,...,label,trial`, from `look-test`,
-  `blink-test` or `session`, over USB or Bluetooth): raw ADC counts with the prompt shown at
+* This package's own recordings (`sample_index,...,raw,...,label,trial`: eye-calibration rounds and
+  the older look and blink tests, over USB or Bluetooth): raw ADC counts with the prompt shown at
   each sample. They go through the same Chords-Web filter as live use, and since the prompts
   were timed by the program, the windows are tight (PROMPTED).
 
@@ -182,7 +182,7 @@ def score(recording, events):
                 return i, event
         return None, None
 
-    for start, end, cue, answer_from, answer_to in windows:
+    for start, _, cue, answer_from, answer_to in windows:
         if cue in ('LEFT', 'RIGHT'):
             result['looks'] += 1
             i, event = first(('LEFT', 'RIGHT'), answer_from, answer_to)

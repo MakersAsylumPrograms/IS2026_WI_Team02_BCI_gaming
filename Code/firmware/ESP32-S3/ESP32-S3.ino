@@ -52,7 +52,7 @@
 // Connect the laptop to the board's "UART" USB port (USB-to-UART bridge).
 // Close the Arduino Serial Monitor/Plotter before Chords or Python opens the port.
 //
-// Serial protocol (USB, currently COM7), 230400 baud 8N1. Commands end with '\n':
+// Serial protocol (USB; the laptop finds the port itself), 230400 baud 8N1. Commands end with '\n':
 //   WHORU  -> "ESP32-S3"           START -> begin streaming (no reply)
 //   STOP   -> stop streaming        STATUS -> "RUNNING" or "STOPPED"
 //   STATS  -> "STATS missed=<n> dropped=<n>" since the last START
