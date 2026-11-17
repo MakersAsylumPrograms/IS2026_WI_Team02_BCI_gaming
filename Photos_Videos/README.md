@@ -1,1 +1,0 @@
-This folder will contain all of your project prototype,failures or team progress files.

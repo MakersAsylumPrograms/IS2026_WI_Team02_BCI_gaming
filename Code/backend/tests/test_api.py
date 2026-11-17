@@ -12,7 +12,9 @@ from app import create_app, TYPES
 @pytest.fixture
 def system(tmp_path):
     now = [100.0]
-    config = dict(TESTING=True, DATABASE=str(tmp_path / 'db.sqlite3'),
+    (tmp_path / 'site' / 'patient').mkdir(parents=True)          # a built page, without needing `npm run build`
+    (tmp_path / 'site' / 'patient' / 'index.html').write_text('patient', encoding='utf-8')
+    config = dict(TESTING=True, DATABASE=str(tmp_path / 'db.sqlite3'), FRONTEND=str(tmp_path / 'site'),
                   PATIENT_PASSWORD='patient-test', STAFF_PASSWORD='staff-test',
                   DEVICE_TOKEN='device-test', SECRET_KEY='test-secret', CLOCK=lambda: now[0])
     app = create_app(config)

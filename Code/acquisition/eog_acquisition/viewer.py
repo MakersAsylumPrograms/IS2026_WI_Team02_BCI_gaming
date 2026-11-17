@@ -1,7 +1,7 @@
 """Live channel-1 plots (pyqtgraph, as used by chordspy).
 
 Top: raw ADC counts, unchanged. Bottom: with an eye detector, the Chords-Web EOG signal it works on
-and the band a look's pulse has to leave; without one, the 0.5-20 Hz filtered signal. The large
+and the band a look's pulse has to leave; without one, the same signal filtered by the plot. The large
 label shows the current guided-sequence cue, or flashes each command as it happens.
 """
 import threading
@@ -9,6 +9,8 @@ import time
 from collections import deque
 
 import numpy as np
+
+from .chords_filter import ChordsWebFilter
 
 WINDOW_SECONDS = 10
 FLASH_SECONDS = 0.8
@@ -28,15 +30,21 @@ class LiveView:
         self.status = status
         self.pipeline = pipeline
         self.commands, self._last_flash, self._flash = 0, -1e9, ''
+        self._chords = ChordsWebFilter()
         pipeline.on_sample(self._add)
         pipeline.on_event(self._event)
 
     def _add(self, processed):
+        sample = processed.sample
+        if self.pipeline.detector:
+            lower = processed.eye
+        else:                                   # no detector: the same Chords-Web signal, filtered here
+            if sample.gap_before or sample.stall:
+                self._chords.reset()
+            lower = self._chords.process(sample.raw)
         with self._lock:
-            self._raw.append(processed.sample.raw)
-            # Plotting is not classification: show the waveform even when the raw ADC touches a rail.
-            self._lower.append(processed.eye if self.pipeline.detector
-                               else processed.filtered if processed.ready else np.nan)
+            self._raw.append(sample.raw)
+            self._lower.append(lower)
 
     def _event(self, event):
         self.commands += event.source == 'eog'
@@ -55,7 +63,7 @@ class LiveView:
         raw_plot = window.addPlot(row=1, col=0, title='Raw ADC counts (channel 1, unchanged)')
         lower_plot = window.addPlot(row=2, col=0, title=(
             'Chords-Web EOG signal (a look: one wide pulse out of the band, up = left, down = right)'
-            if self.pipeline.detector else 'Filtered 0.5-20 Hz'))
+            if self.pipeline.detector else 'Chords-Web EOG signal'))
         lower_plot.enableAutoRange(axis='y', enable=True)
         for plot in (raw_plot, lower_plot):
             plot.showGrid(x=True, y=True)

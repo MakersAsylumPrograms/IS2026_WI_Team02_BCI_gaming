@@ -12,7 +12,7 @@ The coefficients below are copied from that source for 250 Hz, the ESP32-S3 boar
 Its high-pass is commented "1.0 Hz" there, but the numbers are a 0.1 Hz Butterworth (the
 variable holding it is called pointoneFilter); the numbers are what matters and what is used.
 Check: a resting level of 1,900 counts leaks through as 0.00147, the resting mean of the team's
-Chords-Web recordings. Raw values are only read; this is a view of them, like processing.EOGFilter.
+Chords-Web recordings. Raw values are only read; this is a view of them.
 """
 from .protocol import RESOLUTION_BITS, SAMPLE_RATE
 

@@ -1,47 +1,8 @@
-"""Per-sample processing: causal EOG filter, signal health and the sample pipeline."""
+"""Per-sample processing: signal health and the sample pipeline."""
 from collections import deque
 from dataclasses import dataclass
 
-import numpy as np
-from scipy.signal import butter, sosfilt, sosfilt_zi
-
 from .protocol import ADC_MAX, SAMPLE_RATE
-
-FILTER_LOW_HZ = 0.5
-FILTER_HIGH_HZ = 20.0
-WARMUP_SECONDS = 1.5  # classification is suppressed this long after a start or discontinuity
-
-
-class EOGFilter:
-    """Causal 0.5-20 Hz band-pass for classification (raw values are never modified).
-
-    A first-order high-pass is used on purpose: higher orders undershoot after a gaze
-    step, and that undershoot would look like a return movement. Call reset() after
-    any discontinuity; the state restarts from the next sample as a steady level.
-    """
-
-    def __init__(self, sample_rate=SAMPLE_RATE, low=FILTER_LOW_HZ, high=FILTER_HIGH_HZ, warmup=WARMUP_SECONDS):
-        self.sos = np.vstack([butter(1, low, 'highpass', fs=sample_rate, output='sos'),
-                              butter(2, high, 'lowpass', fs=sample_rate, output='sos')])
-        self._unit_state = sosfilt_zi(self.sos)
-        self.warmup_samples = int(round(warmup * sample_rate))
-        self.reset()
-
-    def reset(self):
-        self._state = None
-        self._warmup_left = self.warmup_samples
-
-    def process(self, value):
-        if self._state is None:
-            self._state = self._unit_state * value
-        out, self._state = sosfilt(self.sos, (value,), zi=self._state)
-        if self._warmup_left:
-            self._warmup_left -= 1
-        return float(out[0])
-
-    @property
-    def ready(self):
-        return self._warmup_left == 0
 
 
 class HealthMonitor:
@@ -94,17 +55,15 @@ class HealthMonitor:
 @dataclass(frozen=True)
 class ProcessedSample:
     sample: object      # protocol.Sample (raw, unchanged)
-    filtered: float     # 0.5-20 Hz band-passed ADC counts
     clipped: bool
     label: str          # protocol label active when the sample arrived ('' outside sessions)
     trial: int
-    ready: bool = True  # filter warmed up (no recent start or discontinuity)
     eye: float = float('nan')  # the eye detector's signal (Chords-Web units; nan without a detector)
 
 
 class Pipeline:
     """Every accepted sample passes through process() exactly once, in order:
-    health -> filter -> detector -> joystick -> recorder -> sample callbacks -> event callbacks.
+    health -> detector -> joystick -> recorder -> sample callbacks -> event callbacks.
 
     Device reader threads call it with batches: `device.start(pipeline)`.
     The eye detector (gestures.GestureDetector) and the joystick (joystick.JoystickReader) are optional.
@@ -113,7 +72,6 @@ class Pipeline:
     """
 
     def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None):
-        self.filter = EOGFilter(sample_rate)
         self.health = HealthMonitor(sample_rate)
         self.detector = detector
         self.joystick = joystick
@@ -156,21 +114,18 @@ class Pipeline:
         label, trial = tag if tag is not None else self._tag
         detector, joystick, recorder = self.detector, self.joystick, self.recorder   # may be swapped meanwhile
         if sample.gap_before or sample.stall:
-            self.filter.reset()  # never filter or detect across a hole in the data
             if detector:
-                detector.reset()
+                detector.reset()  # never detect across a hole in the data
             if joystick:
                 joystick.reset()
-        filtered = self.filter.process(sample.raw)
         clipped = self.health.update(sample)
-        ready = self.filter.ready
         events, eye = [], float('nan')
         if detector:
             events = detector.step(sample.raw, clipped, sample.index, sample.host_time)
             eye = detector.value
         if joystick:
             events = events + joystick.update(sample)
-        processed = ProcessedSample(sample, filtered, clipped, label, trial, ready, eye)
+        processed = ProcessedSample(sample, clipped, label, trial, eye)
         if recorder:
             recorder.write(processed)
         self.processed += 1

@@ -1,1 +1,0 @@
-This folder will contain all of the reference data collected from online or any research papers/datasheet files.

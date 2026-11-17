@@ -313,9 +313,8 @@ class GestureDetector:
                     self._grow(pulse, level)              # nothing in between: one movement in two steps
                     self.state = 'pulse'
                     return []
-                events = self._blink(n, index, host_time) if self._swung_back() else []
-                self._pulse, self.state = self._new_pulse(value, n, index), 'pulse'
-                return events
+                self._pulse, self.state = self._new_pulse(value, n, index), 'pulse'   # a blink's spike or a new pulse
+                return []
             self._dip = max(self._dip, -level)
             if -level < m.onset:
                 self._swing = None
@@ -332,12 +331,9 @@ class GestureDetector:
             if since >= t['confirm']:
                 left = self._left[0] / self._left[1]
                 self.state = 'idle'
-                if self._swung_back(left):
-                    events = self._blink(n, index, host_time)
-                elif left >= m.tail and pulse['peak'] >= m.move_peak:
-                    events = self._movement(n, index, host_time)
-                else:
-                    events = []
+                # A spike with its rebound is a blink, never a look (BlinkPairs decides SELECT).
+                moved = not self._swung_back(left) and left >= m.tail and pulse['peak'] >= m.move_peak
+                events = self._movement(n, index, host_time) if moved else []
                 if self._swing is not None:
                     self._pulse, self.state = self._swing, 'pulse'
                 return events
@@ -359,10 +355,6 @@ class GestureDetector:
 
     def _distrust(self):
         self.state, self._quiet, self.gaze = 'unsettled', 0, 0
-
-    def _blink(self, n, index, host_time):
-        """A spike with its rebound: never a look. SELECT is decided by BlinkPairs."""
-        return []
 
     def _movement(self, n, index, host_time):
         """The eyes moved and stayed: a look, the way back from one, or a movement too small to be a command."""
