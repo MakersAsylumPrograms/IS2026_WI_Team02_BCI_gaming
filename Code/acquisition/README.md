@@ -94,16 +94,19 @@ From the command line, with EqualCare closed:
 Both run the same sequence twice (about 75 s each): 6 cued looks (3 left, 3 right, in random order,
 held 2.5 s), 3 single blinks, 5 double blinks and 15 s of free viewing. Then five thresholds (look
 pulse height, width and the level left after it; blink rise and how soon it falls) are fitted on a grid to
-those two rounds only, and each round is scored with the thresholds fitted on the other. The model
+those two rounds only, and each round is scored with the thresholds fitted on the other. Before that,
+the sign of the looks and of the blinks is taken from the rounds themselves: depending on where the
+electrodes sit, a blink starts with a spike or with a dip. The model
 is saved over `models/eog-gestures.json` only if that check passes (≥ 90% of looks caught, ≥ 90% of
-look commands right, ≤ 1 false command a minute, no false SELECT); otherwise the candidate goes to
+look commands right, ≥ 60% of double blinks caught, ≤ 1 false command a minute, no false SELECT); otherwise the candidate goes to
 `data/models/eog-gestures-<time>-not-approved.json` and nothing changes. Each round is kept as
 `data/recordings/eye-calibration-<time>-round<n>.csv`.
 
 `run` sends eye commands only from a model whose check passed for exactly its thresholds;
 `--allow-provisional-eog` overrides that for experiments. The joystick is always sent.
 
-To refit from saved recordings (Chords-Web exports and/or calibration rounds):
+To refit from saved recordings (calibration rounds and/or Chords-Web exports), with the same check and
+the same rule for replacing the model:
 
 ```powershell
 .venv\Scripts\python.exe -m eog_acquisition refit data\recordings\eye-calibration-*-round1.csv data\recordings\eye-calibration-*-round2.csv

@@ -274,8 +274,10 @@ def print_result(result):
     print(f" Looks: {m['look_hits']} of {m['looks']} gave the right command, {m['wrong_direction']} the wrong one")
     print(f" Double blinks: {m['select_hits']} of {m['double_blinks']} gave SELECT")
     print(f" False commands: {m['false_moves']} move, {m['false_selects']} SELECT in {m['minutes']} min")
-    if result['swapped']:
+    if 'left/right' in result['flipped']:
         print(' Left and right came out reversed: the model now expects IN+ and IN- the other way round.')
+    if 'blink' in result['flipped']:
+        print(' Blinks came out upside down for this electrode placement: the model now expects them that way.')
     if result['passed']:
         print(f" APPROVED. Saved to {result['saved']}; restart EqualCare to use it.")
     else:
@@ -324,22 +326,14 @@ def print_gesture_score(name, s):
 
 
 def cmd_refit(args):
-    """Fit the eye model to saved recordings (Chords-Web exports and this program's eye-calibration rounds)."""
-    print(f'Calibrating on {len(args.recordings)} recordings:')
+    """Fit the eye model to saved recordings (eye-calibration rounds and/or Chords-Web exports); like a
+    calibration, it replaces --model only if the fit passes its check."""
+    print(f'Calibrating on {len(args.recordings)} recordings (each is scored with a fit made without it):')
     for path in args.recordings:
         print(f'  {Path(path).name}')
-    recordings = [chords_calibration.load_any(path) for path in args.recordings]
-    model, report = chords_calibration.calibrate(recordings)
-    out = gestures.save_model(model, args.out, report)
-    print('Each recording scored with thresholds fitted WITHOUT it (the honest numbers):')
-    for s in report['held_out']:
-        print_gesture_score(s['recording'], s)
-    print_gesture_score('together', report['held_out_total'])
-    passed = model.validation['passed']
-    print(f"Dashboard EOG {'APPROVED' if passed else 'NOT approved'}: needs "
-          + ', '.join(f'{k} {v}' for k, v in chords_calibration.CRITERIA.items()))
-    print(f'Model saved to {out}')
-    return 0 if passed else 1
+    result, _ = guided.fit(args.recordings, gestures.load_model(args.model), args.model, stamp())
+    print_result(result)
+    return 0 if result['passed'] else 1
 
 
 def cmd_replay_chords(args):
@@ -594,9 +588,8 @@ def main(argv=None):
     p = add('test-eyes', cmd_test_eyes, model=True, plot=True)
     p.add_argument('--seconds', type=float, default=60.0)
 
-    p = add('refit', cmd_refit, port=False)
-    p.add_argument('recordings', nargs='+', help='Chords-Web CSVs and/or eye-calibration-*.csv recordings')
-    p.add_argument('--out', default=str(gestures.DEFAULT_MODEL), help='model path (default: the team model)')
+    p = add('refit', cmd_refit, port=False, model=True)
+    p.add_argument('recordings', nargs='+', help='eye-calibration-*.csv recordings and/or Chords-Web CSVs')
 
     p = add('replay-chords', cmd_replay_chords, port=False, model=True, server=True)
     p.add_argument('recording', help='Chords-Web CSV or one of this program\'s recordings')

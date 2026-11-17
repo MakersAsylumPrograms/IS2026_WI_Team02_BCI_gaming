@@ -107,29 +107,41 @@ def _shortfalls(metrics):
     if (metrics['false_commands_per_minute'] or 0) > c['false_commands_per_minute']:
         out.append(f"{metrics['false_commands_per_minute']} false commands a minute "
                    f"(needs at most {c['false_commands_per_minute']:g})")
+    if not metrics['double_blinks'] or (metrics['select_recall'] or 0) < c['select_recall']:
+        out.append(f"double blinks caught {metrics['select_hits']} of {metrics['double_blinks']} "
+                   f"(needs {c['select_recall']:.0%})")
     if metrics['false_selects'] > c['false_selects']:
         out.append(f"{metrics['false_selects']} SELECT(s) without a double blink (needs none)")
     return out
 
 
 def orient(recordings, base):
-    """`base`, with left and right swapped if the recordings say the electrodes are the other way round."""
-    def right_and_wrong(model):
-        totals = chords_calibration.total([chords_calibration.score(r, chords_calibration.detect(r, model))
-                                           for r in recordings])
-        return totals['look_hits'], totals['wrong_direction']
-    hits, wrong = right_and_wrong(base)
-    if wrong > hits:
-        flipped = replace(base, left_polarity=-base.left_polarity)
-        if right_and_wrong(flipped)[0] > hits:
-            return flipped, True
-    return base, False
+    """`base`, with the look directions and the blink's sign flipped where the recordings show them the other
+    way round: electrode placement decides both (a blink can start with a dip instead of a spike).
+    Returns (model, what was flipped: a list of 'left/right' and 'blink')."""
+    def totals(model):
+        return chords_calibration.total([chords_calibration.score(r, chords_calibration.detect(r, model))
+                                         for r in recordings])
+    flipped, now = [], totals(base)
+    if now['wrong_direction'] > now['look_hits']:
+        candidate = replace(base, left_polarity=-base.left_polarity)
+        other = totals(candidate)
+        if other['look_hits'] > now['look_hits']:
+            base, now = candidate, other
+            flipped.append('left/right')
+    candidate = replace(base, blink_polarity=-base.blink_polarity)
+    other = totals(candidate)
+    if other['select_hits'] - other['false_selects'] > now['select_hits'] - now['false_selects']:
+        base = candidate
+        flipped.append('blink')
+    return base, flipped
 
 
 def fit(paths, current, model_path, stamp):
-    """Fit on the recorded rounds; save. Returns the result the patient screen and the terminal show."""
-    recordings = [chords_calibration.load_prompted(p) for p in paths]
-    base, swapped = orient(recordings, replace(current, validation=None))
+    """Fit on the recordings (eye-calibration rounds or Chords-Web exports); save. Returns the result the
+    patient screen and the terminal show, and the model."""
+    recordings = [chords_calibration.load_any(p) for p in paths]
+    base, flipped = orient(recordings, replace(current, validation=None))
     model, report = chords_calibration.calibrate(recordings, base)
     metrics = model.validation['metrics']
     passed = model.validation['passed']
@@ -144,7 +156,7 @@ def fit(paths, current, model_path, stamp):
         saved = gestures.save_model(model, models / f'eog-gestures-{stamp}-not-approved.json', report)
     keys = ('looks', 'look_hits', 'wrong_direction', 'double_blinks', 'select_hits', 'false_moves',
             'false_selects', 'minutes')
-    return dict(passed=passed, swapped=swapped, saved=str(saved), shortfalls=_shortfalls(metrics),
+    return dict(passed=passed, flipped=flipped, saved=str(saved), shortfalls=_shortfalls(metrics),
                 metrics={k: metrics[k] for k in keys}, recordings=[str(p) for p in paths]), model
 
 

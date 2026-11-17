@@ -14,6 +14,8 @@ from test_dashboard import backend, patient_screen, wait_for   # noqa: F401  (ba
 DATA = Path(__file__).resolve().parents[1] / 'data' / 'recordings'
 # Two earlier prompted recordings of the same kind the calibration makes: a look test and a blink test.
 ROUNDS = [DATA / 'look-test-20261115-125657.csv', DATA / 'blink-test-20261115-124139.csv']
+# A calibration from the patient screen, 2026-11-17: this placement's blinks start with a dip, not a spike.
+DIPPING = [DATA / f'eye-calibration-20261117-183645-round{n}.csv' for n in (1, 2)]
 REFERENCE = Path(__file__).resolve().parent / 'fixtures' / 'team-model-2026-11-15.json'
 recorded = pytest.mark.skipif(not all(p.exists() for p in ROUNDS), reason='the prompted recordings are not here')
 
@@ -44,7 +46,7 @@ def test_fit_replaces_the_model_only_when_approved(tmp_path, monkeypatch):
     current = gestures.load_model(REFERENCE)
 
     result, model = guided.fit(ROUNDS, current, model_path, 'T1')
-    assert result['passed'] and gestures.dashboard_approved(model) and not result['swapped']
+    assert result['passed'] and gestures.dashboard_approved(model) and result['flipped'] == []
     assert gestures.load_model(model_path) == model
     assert (tmp_path / 'models' / 'eog-gestures-before-T1.json').read_bytes() == REFERENCE.read_bytes()
     assert result['metrics']['looks'] == 16 and result['shortfalls'] == []
@@ -62,9 +64,34 @@ def test_swapped_electrodes_are_noticed_and_corrected():
     recordings = [chords_calibration.load_prompted(p) for p in ROUNDS[:1]]
     model = gestures.load_model(REFERENCE)
     backwards = replace(model, left_polarity=-model.left_polarity, validation=None)
-    oriented, swapped = guided.orient(recordings, backwards)
-    assert swapped and oriented.left_polarity == model.left_polarity
-    assert guided.orient(recordings, model) == (model, False)
+    oriented, flipped = guided.orient(recordings, backwards)
+    assert flipped == ['left/right'] and oriented.left_polarity == model.left_polarity
+    assert guided.orient(recordings, model) == (model, [])
+
+
+@pytest.mark.skipif(not all(p.exists() for p in DIPPING), reason='the 2026-11-17 calibration is not here')
+def test_blinks_that_start_with_a_dip_are_noticed_and_caught():
+    recordings = [chords_calibration.load_prompted(p) for p in DIPPING]
+    model = replace(gestures.load_model(REFERENCE), validation=None)
+    assert model.blink_polarity == 1
+
+    def selects(m):
+        return chords_calibration.total([chords_calibration.score(r, chords_calibration.detect(r, m))
+                                         for r in recordings])['select_hits']
+    oriented, flipped = guided.orient(recordings, model)
+    # This placement is also mirrored left/right compared with the team's.
+    assert flipped == ['left/right', 'blink'] and oriented.blink_polarity == -1
+    assert selects(model) <= 1 and selects(oriented) >= 8           # of 10 cued double blinks
+    assert guided.orient(recordings, oriented) == (oriented, [])     # already right: nothing changes
+
+
+def test_a_model_whose_double_blinks_fail_is_not_approved():
+    metrics = dict(looks=12, look_hits=12, wrong_direction=0, double_blinks=10, select_hits=0, false_moves=0,
+                   false_selects=0, minutes=2.7, look_recall=1.0, look_precision=1.0, select_recall=0.0,
+                   false_commands_per_minute=0.0)
+    assert not chords_calibration.passes(metrics)
+    assert guided._shortfalls(metrics) == ['double blinks caught 0 of 10 (needs 60%)']
+    assert chords_calibration.passes(dict(metrics, select_hits=6, select_recall=0.6))
 
 
 def test_watch_reports_single_blinks_and_gestures():

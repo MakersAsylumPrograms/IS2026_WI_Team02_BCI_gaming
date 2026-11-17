@@ -42,7 +42,9 @@ BLINK_EARLY = 1.0                   # Chords sheet: s a double blink may start b
 # Prompted recordings: (s before the prompt, s after it ends) in which the answer may start
 PROMPTED = dict(LEFT=(0.5, 0.5), RIGHT=(0.5, 0.5), DOUBLE_BLINK=(BLINK_EARLY, 0.6))
 # What "works" means here, checked on recordings the thresholds were NOT fitted on:
-CRITERIA = dict(look_recall=0.9, look_precision=0.9, false_commands_per_minute=1.0, false_selects=0)
+# select_recall: SELECT is how a request is sent, so a model whose double blinks mostly fail is not approved.
+CRITERIA = dict(look_recall=0.9, look_precision=0.9, select_recall=0.6, false_commands_per_minute=1.0,
+                false_selects=0)
 # Looks are fitted first (with the blink settings as they are), then the blinks.
 LOOK_GRID = dict(look_peak=(0.45, 0.5, 0.55, 0.6), look_width=(0.16, 0.18, 0.2, 0.22), tail=(0.0, 0.04, 0.08))
 BLINK_GRID = dict(blink_rise=(0.35, 0.4, 0.5), blink_fall_within=(0.35, 0.4, 0.5))
@@ -228,6 +230,7 @@ def total(scores):
 def passes(t):
     return bool(t['looks'] and t['look_recall'] >= CRITERIA['look_recall']
                 and t['look_precision'] is not None and t['look_precision'] >= CRITERIA['look_precision']
+                and t['double_blinks'] and t['select_recall'] >= CRITERIA['select_recall']
                 and t['false_commands_per_minute'] <= CRITERIA['false_commands_per_minute']
                 and t['false_selects'] <= CRITERIA['false_selects'])
 
