@@ -122,6 +122,13 @@ export class EqualCareAPI {
     const query = cursor === null ? '' : `?after=${cursor}&epoch=${encodeURIComponent(epoch)}`;
     return this.call(`/input-events${query}`, {headers: {'X-Consumer-ID': consumer}});
   }
+
+  // ---- Eye calibration (patient only) ----
+  // mode 'calibrate' (cued looks and blinks, then a new eye model) or 'test' (show each eye signal).
+  // -> {job: {id, mode, state, cue, label, progress, round, rounds, signals, result, message}}
+  startCalibration(mode) { return this.call('/calibration', {method: 'POST', body: {mode}}); }
+  calibration() { return this.call('/calibration'); }
+  cancelCalibration() { return this.call('/calibration', {method: 'DELETE'}); }
 }
 
 // Random ID (32 hex chars). crypto.randomUUID() only works on HTTPS or

@@ -96,11 +96,10 @@ class ProcessedSample:
     sample: object      # protocol.Sample (raw, unchanged)
     filtered: float     # 0.5-20 Hz band-passed ADC counts
     clipped: bool
-    usable: bool        # filter warmed up and not clipped
     label: str          # protocol label active when the sample arrived ('' outside sessions)
     trial: int
     ready: bool = True  # filter warmed up (no recent start or discontinuity)
-    gaze: float = float('nan')  # recovered gaze level from the CYCLE detector (nan without one)
+    eye: float = float('nan')  # the eye detector's signal (Chords-Web units; nan without a detector)
 
 
 class Pipeline:
@@ -108,17 +107,16 @@ class Pipeline:
     health -> filter -> detector -> joystick -> recorder -> sample callbacks -> event callbacks.
 
     Device reader threads call it with batches: `device.start(pipeline)`.
-    The EOG detector (cycle.CycleDetector) and the joystick (joystick.JoystickReader) are optional;
+    The eye detector (gestures.GestureDetector) and the joystick (joystick.JoystickReader) are optional.
+    Either can be swapped while streaming (a recalibrated detector, a recorder for one round);
     raw values are never modified.
     """
 
-    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None, double_blink=False):
+    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None):
         self.filter = EOGFilter(sample_rate)
         self.health = HealthMonitor(sample_rate)
         self.detector = detector
         self.joystick = joystick
-        from .blink import DoubleBlinkDetector
-        self.blink = DoubleBlinkDetector(sample_rate) if double_blink else None
         self.recorder = recorder
         self._tag = ('', 0)
         self._sample_callbacks = []
@@ -131,8 +129,13 @@ class Pipeline:
         self._sample_callbacks.append(callback)
 
     def on_event(self, callback):
-        """callback(event) for each CycleEvent (eyes) and JoystickEvent (joystick), in sample order."""
+        """callback(event) for each GestureEvent (eyes) and JoystickEvent (joystick), in sample order."""
         self._event_callbacks.append(callback)
+
+    def remove_callback(self, callback):
+        for callbacks in (self._sample_callbacks, self._event_callbacks):
+            if callback in callbacks:
+                callbacks.remove(callback)
 
     def set_label(self, label, trial=0):
         self._tag = (label, trial)  # one assignment, so the reader thread never sees half an update
@@ -151,34 +154,29 @@ class Pipeline:
             raise ValueError(f'Sample {sample.index} is out of order or a duplicate (last {self._last_index}).')
         self._last_index = sample.index
         label, trial = tag if tag is not None else self._tag
+        detector, joystick, recorder = self.detector, self.joystick, self.recorder   # may be swapped meanwhile
         if sample.gap_before or sample.stall:
             self.filter.reset()  # never filter or detect across a hole in the data
-            if self.detector:
-                self.detector.reset()
-            if self.joystick:
-                self.joystick.reset()
+            if detector:
+                detector.reset()
+            if joystick:
+                joystick.reset()
         filtered = self.filter.process(sample.raw)
         clipped = self.health.update(sample)
         ready = self.filter.ready
-        events, gaze = [], float('nan')
-        if self.detector:
-            events = self.detector.step(sample.raw, clipped, sample.index, sample.host_time)
-            gaze = self.detector.value
-        if self.joystick:
-            events = events + self.joystick.update(sample)
-        if self.blink:
-            selections = self.blink.update(sample, filtered, ready)
-            if selections:
-                events = [event for event in events if event.source != 'eog'] + selections
-                if self.detector:
-                    self.detector.reset()
-        processed = ProcessedSample(sample, filtered, clipped, ready and not clipped, label, trial, ready, gaze)
-        if self.recorder:
-            self.recorder.write(processed)
+        events, eye = [], float('nan')
+        if detector:
+            events = detector.step(sample.raw, clipped, sample.index, sample.host_time)
+            eye = detector.value
+        if joystick:
+            events = events + joystick.update(sample)
+        processed = ProcessedSample(sample, filtered, clipped, label, trial, ready, eye)
+        if recorder:
+            recorder.write(processed)
         self.processed += 1
-        for callback in self._sample_callbacks:
+        for callback in tuple(self._sample_callbacks):    # a copy: callbacks may be removed meanwhile
             callback(processed)
         for event in events:
-            for callback in self._event_callbacks:
+            for callback in tuple(self._event_callbacks):
                 callback(event)
         return processed

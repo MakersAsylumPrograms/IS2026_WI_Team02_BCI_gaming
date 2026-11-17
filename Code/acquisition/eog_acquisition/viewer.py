@@ -1,8 +1,8 @@
 """Live channel-1 plots (pyqtgraph, as used by chordspy).
 
-Top: raw ADC counts, unchanged. Bottom: with a CYCLE detector, the recovered gaze level and the
-band a look has to leave (and stay out of for `hold` seconds) to count; without one, the
-0.5-20 Hz filtered signal. The large label shows the guided-session command, or flashes CYCLE.
+Top: raw ADC counts, unchanged. Bottom: with an eye detector, the Chords-Web EOG signal it works on
+and the band a look's pulse has to leave; without one, the 0.5-20 Hz filtered signal. The large
+label shows the current guided-sequence cue, or flashes each command as it happens.
 """
 import threading
 import time
@@ -10,10 +10,11 @@ from collections import deque
 
 import numpy as np
 
-from .session import WORDS
-
 WINDOW_SECONDS = 10
 FLASH_SECONDS = 0.8
+# label of a guided sequence -> the cue shown on screen
+CUES = {'CENTER': 'CENTRE', 'LEFT': '<<< LOOK LEFT', 'RIGHT': 'LOOK RIGHT >>>', 'BLINK': 'BLINK ONCE',
+        'DOUBLE_BLINK': 'BLINK TWICE', 'REST': 'REST', 'NATURAL': 'LOOK AROUND', 'END': 'DONE'}
 
 
 class LiveView:
@@ -26,31 +27,21 @@ class LiveView:
         self._lock = threading.Lock()
         self.status = status
         self.pipeline = pipeline
-        self.detector = pipeline.detector
-        self.cycles, self._last_cycle, self._flash = 0, -1e9, ''
+        self.commands, self._last_flash, self._flash = 0, -1e9, ''
         pipeline.on_sample(self._add)
-        pipeline.on_event(self._cycle)
+        pipeline.on_event(self._event)
 
     def _add(self, processed):
         with self._lock:
             self._raw.append(processed.sample.raw)
-            if self.detector:
-                self._lower.append(processed.gaze)
-            else:
-                # Plotting is not classification: show the filtered waveform even
-                # when the raw ADC touches a rail. Hide only filter warm-up.
-                self._lower.append(processed.filtered if processed.ready else np.nan)
+            # Plotting is not classification: show the waveform even when the raw ADC touches a rail.
+            self._lower.append(processed.eye if self.pipeline.detector
+                               else processed.filtered if processed.ready else np.nan)
 
-    def _cycle(self, event):
-        if event.source == 'eog':
-            self.cycles += 1
-            if isinstance(event.direction, str):          # a gesture: LEFT, RIGHT or DOUBLE_BLINK
-                self._flash = f'{event.direction.replace("_", " ")} → {event.command}'
-            else:
-                self._flash = 'DOUBLE BLINK → SELECT' if event.command == 'SELECT' else 'CYCLE'
-        else:
-            self._flash = f'{event.direction} → {event.command}'
-        self._last_cycle = time.monotonic()
+    def _event(self, event):
+        self.commands += event.source == 'eog'
+        self._flash = f'{event.direction.replace("_", " ")} → {event.command}'
+        self._last_flash = time.monotonic()
 
     def run(self, keep_going):
         """Blocks until the window is closed or keep_going() returns False."""
@@ -62,12 +53,9 @@ class LiveView:
         window.resize(1000, 700)
         command = window.addLabel('', row=0, col=0)
         raw_plot = window.addPlot(row=1, col=0, title='Raw ADC counts (channel 1, unchanged)')
-        if hasattr(self.detector, 'filter'):              # gesture detector: the signal Chords-Web shows
-            lower_title = 'Chords-Web EOG signal (a look: one wide pulse out of the band, up = left, down = right)'
-        else:
-            lower_title = ('Recovered gaze (CYCLE when it leaves the band and stays out)' if self.detector
-                           else 'Filtered 0.5-20 Hz')
-        lower_plot = window.addPlot(row=2, col=0, title=lower_title)
+        lower_plot = window.addPlot(row=2, col=0, title=(
+            'Chords-Web EOG signal (a look: one wide pulse out of the band, up = left, down = right)'
+            if self.pipeline.detector else 'Filtered 0.5-20 Hz'))
         lower_plot.enableAutoRange(axis='y', enable=True)
         for plot in (raw_plot, lower_plot):
             plot.showGrid(x=True, y=True)
@@ -75,8 +63,6 @@ class LiveView:
         raw_curve = raw_plot.plot(pen='y')
         lower_curve = lower_plot.plot(pen='c')
         band = [lower_plot.addLine(y=0, pen=pg.mkPen('m', style=QtCore.Qt.DashLine)) for _ in range(2)]
-        for line in band:
-            line.setVisible(bool(self.detector))
         footer = window.addLabel('', row=3, col=0)
 
         def refresh():
@@ -88,21 +74,19 @@ class LiveView:
             t = (np.arange(len(raw)) - len(raw)) / self.sample_rate
             raw_curve.setData(t, raw)
             lower_curve.setData(t, lower, connect='finite')
-            if self.detector:
-                reference, threshold = self.detector.reference, self.detector.model.threshold
-                band[0].setValue(reference + threshold)
-                band[1].setValue(reference - threshold)
-            joystick = self.pipeline.joystick
-            footer.setText(f'{self.status()}   eye commands: {self.cycles}'
-                           + (f'   detector: {self.detector.state}' if self.detector else '')
+            detector, joystick = self.pipeline.detector, self.pipeline.joystick   # the detector may be swapped
+            for line, sign in zip(band, (1, -1)):
+                line.setVisible(bool(detector))
+                if detector:
+                    line.setValue(sign * detector.model.look_peak)
+            footer.setText(f'{self.status()}   eye commands: {self.commands}'
+                           + (f'   detector: {detector.state}' if detector else '')
                            + (f'   joystick: {"ready" if joystick.ready else "measuring centre (leave it still)"}'
                               if joystick else ''))
-            label = self.pipeline.current_label
-            if time.monotonic() - self._last_cycle < FLASH_SECONDS:
+            if time.monotonic() - self._last_flash < FLASH_SECONDS:
                 command.setText(self._flash, size='48pt', bold=True, color='#3f3')
             else:
-                text = WORDS.get(label, '') if label != 'END' else 'DONE'
-                command.setText(text, size='48pt', bold=True, color='w')
+                command.setText(CUES.get(self.pipeline.current_label, ''), size='48pt', bold=True, color='w')
 
         timer = QtCore.QTimer()
         timer.timeout.connect(refresh)

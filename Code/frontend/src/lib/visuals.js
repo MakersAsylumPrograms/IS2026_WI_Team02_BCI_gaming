@@ -1,4 +1,4 @@
-import {ArrowLeft, BedSingle, BellRing, Check, CircleHelp, GlassWater, RotateCw, Toilet, X} from 'lucide-react';
+import {ArrowLeft, BedSingle, BellRing, Check, CircleHelp, Eye, GlassWater, RotateCw, Toilet, X} from 'lucide-react';
 
 // One picture + colour per request type / patient action, shared by the
 // patient and staff screens so "Water" always looks the same everywhere.
@@ -12,6 +12,7 @@ const VISUALS = {
   CANCEL:            {Icon: X,          tile: 'bg-slate-100 text-slate-600'},
   RETRY:             {Icon: RotateCw,   tile: 'bg-teal-100 text-teal-700'},
   BACK:              {Icon: ArrowLeft,  tile: 'bg-slate-100 text-slate-600'},
+  EYES:              {Icon: Eye,        tile: 'bg-indigo-100 text-indigo-700'},
 };
 
 export function visualFor(key) {

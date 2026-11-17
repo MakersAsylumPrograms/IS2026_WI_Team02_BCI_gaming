@@ -51,7 +51,6 @@ class BLEEOGDevice:
         self.on_status = on_status or (lambda state, message: None)
         self.decoder = _Counters()
         self.sequencer = Sequencer()
-        self.samples_delivered = 0
         self.error = None
         self._client = None
         self._sink = None
@@ -77,7 +76,7 @@ class BLEEOGDevice:
             from bleak import BleakClient, BleakScanner
         except ImportError as exc:
             raise DeviceError('Bluetooth needs the bleak package (installed with chordspy). '
-                              'Run Code/acquisition/setup.ps1 again.') from exc
+                              'Start-EqualCare.cmd installs it; run it once with internet.') from exc
 
         async def connect():
             print(f'[bluetooth] Looking for {self.target} (up to {SCAN_SECONDS:.0f} s)...', flush=True)
@@ -171,7 +170,6 @@ class BLEEOGDevice:
             self.decoder.packets += 1
             packet = Packet(counter=chunk[0], channels=values + (0,) * (NUM_SLOTS - BLE_CHANNELS))
             samples.append(self.sequencer.next(packet, now))
-        self.samples_delivered += len(samples)
         try:
             self._sink(samples)
         except Exception as exc:

@@ -27,6 +27,13 @@ TRANSITIONS = {'acknowledge': ('PENDING', 'ACKNOWLEDGED', 'acknowledged_at'),
 EVENT_TTL = 2        # seconds a device command stays deliverable
 LEASE = 3            # seconds one patient screen owns device input
 OFFLINE_AFTER = 15   # seconds without heartbeat before the ESP32 shows offline
+CALIBRATION_MODES = ('calibrate', 'test')
+CALIBRATION_ACTIVE = ('requested', 'running', 'fitting')
+CALIBRATION_REPORTED = ('running', 'fitting', 'done', 'failed')
+CALIBRATION_FIELDS = ('cue', 'label', 'round', 'rounds', 'step', 'steps', 'seconds', 'progress', 'signals',
+                      'result', 'message')
+PICKUP_WITHIN = 10   # seconds for the input process to take up a calibration request
+SILENT_AFTER = 30    # seconds without a progress report before a running calibration counts as lost
 FRONTEND = Path(__file__).parent.parent / 'frontend' / 'dist'   # React screens, built by `npm run build`
 SCHEMA = '''
     PRAGMA journal_mode=WAL;
@@ -72,7 +79,7 @@ def create_app(config=None):
         SECRET_KEY=secrets.token_hex(32), FRONTEND=str(FRONTEND),
         DATABASE=str(Path(__file__).parent / 'instance' / 'equalcare.sqlite3'),
         STAFF_LOGIN_ID='staff', PATIENT_NAME='Bed 1', DEVICE_ID='esp32-01',
-        MAX_CONTENT_LENGTH=4096, SESSION_COOKIE_HTTPONLY=True,
+        MAX_CONTENT_LENGTH=16384, SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict', CLOCK=time.monotonic,
     )
     app.config.update(load_credentials()[0] if config is None else config)
@@ -117,7 +124,7 @@ def create_app(config=None):
     lock = threading.RLock()
     clock = app.config['CLOCK']
     state = dict(events=deque(maxlen=128), cursor=0, epoch=str(uuid.uuid4()),
-                 boot=None, seq=-1, retired=set(), last_seen=None, consumer=None, lease=0)
+                 boot=None, seq=-1, retired=set(), last_seen=None, consumer=None, lease=0, calibration=None)
     app.extensions['input_state'] = state
 
     # --- Auth, errors and headers --------------------------------------------
@@ -286,6 +293,75 @@ def create_app(config=None):
             age = None if state['last_seen'] is None else clock() - state['last_seen']
         return jsonify(device_id=app.config['DEVICE_ID'], connected=age is not None and age < OFFLINE_AFTER,
                        seconds_since_seen=age)
+
+    # --- Eye calibration: the patient screen asks, the input process runs it and reports -----
+    def calibration():
+        """The current job (under lock), failed if the input process never took it up or went silent."""
+        job, now = state['calibration'], clock()
+        if job and job['state'] == 'requested' and now - job['since'] > PICKUP_WITHIN:
+            job.update(state='failed', message='The eye sensor did not answer. Is the board connected and '
+                                               'the EqualCare launcher still running?')
+        elif job and job['state'] in ('running', 'fitting') and now - job['since'] > SILENT_AFTER:
+            job.update(state='failed', message='Lost contact with the eye sensor.')
+        return job
+
+    def public(job):
+        return None if job is None else {k: v for k, v in job.items() if k != 'since'}
+
+    @app.post('/api/v1/calibration')
+    @require('patient')
+    def start_calibration():
+        mode = body().get('mode', 'calibrate')
+        if mode not in CALIBRATION_MODES:
+            return error('INVALID_MODE', f'mode must be one of {", ".join(CALIBRATION_MODES)}.', 400)
+        with lock:
+            seen = state['last_seen']
+            if seen is None or clock() - seen >= OFFLINE_AFTER:
+                return error('DEVICE_OFFLINE', 'The eye sensor is not connected.', 409)
+            job = calibration()
+            if job and job['state'] in CALIBRATION_ACTIVE:
+                return error('CALIBRATION_BUSY', 'A calibration is already running.', 409)
+            state['calibration'] = dict(id=str(uuid.uuid4()), mode=mode, state='requested', since=clock())
+            return jsonify(job=public(state['calibration'])), 201
+
+    @app.get('/api/v1/calibration')
+    @require('patient')
+    def get_calibration():
+        with lock:
+            return jsonify(job=public(calibration()))
+
+    @app.delete('/api/v1/calibration')
+    @require('patient')
+    def cancel_calibration():
+        with lock:
+            job = calibration()
+            if job and job['state'] in CALIBRATION_ACTIVE:
+                job.update(state='cancelled', since=clock())
+            return jsonify(job=public(job))
+
+    @app.get('/api/v1/calibration/device')
+    @device
+    def device_calibration():
+        with lock:
+            state['last_seen'] = clock()
+            job = calibration()
+            return jsonify(job=job and {k: job[k] for k in ('id', 'mode', 'state')})
+
+    @app.put('/api/v1/calibration/device')
+    @device
+    def report_calibration():
+        data = body()
+        with lock:
+            state['last_seen'] = clock()
+            job = calibration()
+            if job is None or data.get('id') != job['id']:
+                return error('STALE_JOB', 'No such calibration job.', 409)
+            if job['state'] not in CALIBRATION_ACTIVE:
+                return jsonify(job=public(job))       # cancelled or finished: the report changes nothing
+            if data.get('state') not in CALIBRATION_REPORTED:
+                return error('INVALID_STATE', f'state must be one of {", ".join(CALIBRATION_REPORTED)}.', 400)
+            job.update({k: data[k] for k in CALIBRATION_FIELDS if k in data}, state=data['state'], since=clock())
+            return jsonify(job=public(job))
 
     # --- Care requests -------------------------------------------------------
     @app.get('/api/v1/requests')

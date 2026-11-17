@@ -7,8 +7,8 @@ Two kinds of recording are accepted:
   from the cue sheet the person followed by the clock (SEQUENCE, copied from
   `Calibration Sequence.xlsx`), so a look counts for its cue if it starts up to LOOK_EARLY
   seconds before the cue or any time until just after its hold ends.
-* This package's own recordings (`sample_index,...,raw,...,label,trial`, from `look-test`,
-  `blink-test` or `session`, over USB or Bluetooth): raw ADC counts with the prompt shown at
+* This package's own recordings (`sample_index,...,raw,...,label,trial`: eye-calibration rounds and
+  the older look and blink tests, over USB or Bluetooth): raw ADC counts with the prompt shown at
   each sample. They go through the same Chords-Web filter as live use, and since the prompts
   were timed by the program, the windows are tight (PROMPTED).
 
@@ -112,6 +112,11 @@ class PromptedRecording:
         return out
 
 
+def file_hash(path):
+    """SHA-256 of a recording with line endings normalised, so a Windows checkout (CRLF) hashes the same."""
+    return hashlib.sha256(Path(path).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+
+
 def load_chords_csv(path):
     path = Path(path)
     with open(path, newline='', encoding='utf-8-sig') as handle:
@@ -121,7 +126,7 @@ def load_chords_csv(path):
     counter = np.array([int(r['Counter']) for r in rows])
     gap = np.concatenate([[0], (np.diff(counter) - 1) % 256])
     return ChordsRecording(path.stem, np.array([float(r['Channel1']) for r in rows]),
-                           np.arange(len(rows)) + np.cumsum(gap), gap, hashlib.sha256(path.read_bytes()).hexdigest())
+                           np.arange(len(rows)) + np.cumsum(gap), gap, file_hash(path))
 
 
 def load_prompted(path):
@@ -138,7 +143,7 @@ def load_prompted(path):
         values[i] = chain.process(int(raw))
     clipped = (r.raw <= 8) | (r.raw >= 4087)
     return PromptedRecording(path.stem, values, r.index, breaks.astype(int), clipped, list(r.label), r.trial,
-                             hashlib.sha256(path.read_bytes()).hexdigest(), r.sample_rate)
+                             file_hash(path), r.sample_rate)
 
 
 def load_any(path):
@@ -177,7 +182,7 @@ def score(recording, events):
                 return i, event
         return None, None
 
-    for start, end, cue, answer_from, answer_to in windows:
+    for start, _, cue, answer_from, answer_to in windows:
         if cue in ('LEFT', 'RIGHT'):
             result['looks'] += 1
             i, event = first(('LEFT', 'RIGHT'), answer_from, answer_to)
