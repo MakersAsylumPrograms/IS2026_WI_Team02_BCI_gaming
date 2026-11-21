@@ -67,6 +67,10 @@ def test_closed_loop_and_retry(system, kind):
     rows = patient.get('/api/v1/requests').json['requests']
     assert len(rows) == 2 and rows[0]['acknowledged_at'] and rows[0]['resolved_at']
     assert staff.post(f'/api/v1/requests/{rid}/acknowledge', headers=sh).json['request']['status'] == 'RESOLVED'
+    # Resolved more than a day ago: still stored, no longer sent to the screens every second.
+    with sqlite3.connect(app.config['DATABASE']) as conn:
+        conn.execute("UPDATE requests SET resolved_at='2000-01-01T00:00:00+00:00' WHERE id=?", (rid,))
+    assert [r['status'] for r in staff.get('/api/v1/requests').json['requests']] == ['PENDING']
 
 
 def test_roles_csrf_and_validation(system):

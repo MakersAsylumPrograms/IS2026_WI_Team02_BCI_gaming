@@ -7,7 +7,7 @@ import time
 import uuid
 from collections import deque
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 
@@ -34,6 +34,7 @@ CALIBRATION_FIELDS = ('cue', 'label', 'round', 'rounds', 'step', 'steps', 'secon
                       'result', 'message')
 PICKUP_WITHIN = 10   # seconds for the input process to take up a calibration request
 SILENT_AFTER = 30    # seconds without a progress report before a running calibration counts as lost
+FITTING_SILENT_AFTER = 120   # the fit reports once at its start; it takes ~7 s on the patient laptop
 FRONTEND = Path(__file__).parent.parent / 'frontend' / 'dist'   # React screens, built by `npm run build`
 SCHEMA = '''
     PRAGMA journal_mode=WAL;
@@ -301,7 +302,8 @@ def create_app(config=None):
         if job and job['state'] == 'requested' and now - job['since'] > PICKUP_WITHIN:
             job.update(state='failed', message='The eye sensor did not answer. Is the board connected and '
                                                'the EqualCare launcher still running?')
-        elif job and job['state'] in ('running', 'fitting') and now - job['since'] > SILENT_AFTER:
+        elif job and job['state'] in ('running', 'fitting') and now - job['since'] > (
+                FITTING_SILENT_AFTER if job['state'] == 'fitting' else SILENT_AFTER):
             job.update(state='failed', message='Lost contact with the eye sensor.')
         return job
 
@@ -367,7 +369,10 @@ def create_app(config=None):
     @app.get('/api/v1/requests')
     @require('patient', 'staff')
     def requests_list():
-        rows = db().execute('SELECT * FROM requests ORDER BY created_at, id').fetchall()
+        # Every screen polls this each second: leave out what was resolved more than a day ago (still stored).
+        since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        rows = db().execute("SELECT * FROM requests WHERE status != 'RESOLVED' OR resolved_at > ? "
+                            'ORDER BY created_at, id', (since,)).fetchall()
         return jsonify(requests=[dict(row) for row in rows], patient=patient_identity())
 
     @app.post('/api/v1/requests')

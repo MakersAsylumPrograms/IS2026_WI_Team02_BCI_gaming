@@ -1,5 +1,7 @@
 """The guided eye calibration and test: the sequence, the fit and its approval gate, and the patient-screen
 round trip through the real backend."""
+import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -8,7 +10,9 @@ import pytest
 
 from eog_acquisition import chords_calibration, gestures, guided
 from eog_acquisition.dashboard import DashboardLink
-from eog_acquisition.processing import Pipeline
+from eog_acquisition.processing import Pipeline, ProcessedSample
+from eog_acquisition.protocol import Sample
+from eog_acquisition.recording import Recorder
 from test_dashboard import backend, patient_screen, wait_for   # noqa: F401  (backend is a fixture)
 
 DATA = Path(__file__).resolve().parents[1] / 'data' / 'recordings'
@@ -92,6 +96,37 @@ def test_a_model_whose_double_blinks_fail_is_not_approved():
     assert not chords_calibration.passes(metrics)
     assert guided._shortfalls(metrics) == ['double blinks caught 0 of 10 (needs 60%)']
     assert chords_calibration.passes(dict(metrics, select_hits=6, select_recall=0.6))
+
+
+def test_a_round_is_recorded_with_its_cues_while_samples_stream(tmp_path):
+    pipeline, stop = Pipeline(), threading.Event()
+
+    def board():                                       # the reader thread: samples keep coming throughout
+        n = 0
+        while not stop.is_set():
+            pipeline([Sample(n, n % 256, 2000, time.monotonic(), 0)])
+            n += 1
+            time.sleep(0.002)
+    reader = threading.Thread(target=board, daemon=True)
+    reader.start()
+    steps = [guided.Step('CENTER', 0, 0.3), guided.Step('LEFT', 1, 0.3), guided.Step('REST', 0, 0.3),
+             guided.Step('DOUBLE_BLINK', 2, 0.3)]
+    recorder = Recorder(tmp_path / 'round', port='test')
+    pipeline.recorder = recorder
+    try:
+        assert guided.run_steps(pipeline, steps, lambda _: None, lambda: True, beep=False)
+        pipeline.recorder = None
+        recorder.close()                               # as calibrate() does, while the reader still runs
+        time.sleep(0.05)
+        recorder.write(ProcessedSample(Sample(10 ** 6, 0, 2000, 0.0, 0), False, 'END', 0))   # late write: ignored
+    finally:
+        stop.set()
+        reader.join(timeout=2)
+    assert not reader.is_alive()
+    recording = chords_calibration.load_prompted(recorder.path)
+    assert [w[2] for w in recording.windows() if w[2] != 'REST'] == ['LEFT', 'DOUBLE_BLINK']
+    s = chords_calibration.score(recording, [])
+    assert (s['looks'], s['double_blinks']) == (1, 1)
 
 
 def test_watch_reports_single_blinks_and_gestures():

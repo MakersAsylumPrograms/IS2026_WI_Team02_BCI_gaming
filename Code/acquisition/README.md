@@ -172,8 +172,8 @@ raw X/Y/button values and every push; both axes stuck at 0 means the joystick ha
 
 | File | Role |
 | --- | --- |
-| `protocol.py`, `device.py`, `ble.py`, `chords_compat.py` | packet decoding, ordered delivery, USB (official chordspy `Chords_USB`) and Bluetooth |
-| `processing.py` | signal health, display filter, `Pipeline` (every sample once, in order) |
+| `protocol.py`, `device.py`, `ble.py` | packet decoding (the Chords USB format), ordered delivery, USB and Bluetooth |
+| `processing.py` | signal health, `Pipeline` (every sample once, in order) |
 | `chords_filter.py` | the Chords-Web filter chain |
 | `gestures.py` | `GestureDetector` (LEFT / RIGHT / DOUBLE BLINK) and its model file |
 | `chords_calibration.py` | loading recordings, scoring against the prompts, fitting and the held-out check |

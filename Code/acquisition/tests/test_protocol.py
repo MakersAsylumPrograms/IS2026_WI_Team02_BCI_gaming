@@ -3,7 +3,6 @@ import random
 import numpy as np
 import pytest
 
-from eog_acquisition.device import ChordsUSBESP32S3
 from eog_acquisition.protocol import ADC_MAX, NUM_SLOTS, PACKET_LEN, Sequencer, StreamDecoder, encode_packet
 
 
@@ -36,19 +35,24 @@ class FakePort:
         return chunk
 
 
-def test_profile_extends_official_chords_usb():
-    from eog_acquisition.chords_compat import Chords_USB
-    assert 'ESP32-S3' not in Chords_USB.supported_boards  # the reason this package adds it
-    profile = ChordsUSBESP32S3.supported_boards['ESP32-S3']
-    assert profile == {'sampling_rate': 250, 'Num_channels': 16, 'resolution': 12}
-    assert PACKET_LEN == 2 * profile['Num_channels'] + Chords_USB.HEADER_LENGTH + 1 == 36
+def official_chords_usb():
+    """chordspy's own serial reader, loaded from its file: its package __init__ starts a web app."""
+    from importlib.metadata import distribution
+    from importlib.util import module_from_spec, spec_from_file_location
+    spec = spec_from_file_location('official_chords_serial', distribution('chordspy').locate_file(
+        'chordspy/chords_serial.py'))
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Chords_USB
 
 
 def test_matches_official_decoder_packet_by_packet():
+    Chords_USB = official_chords_usb()
+    assert PACKET_LEN == 2 * NUM_SLOTS + Chords_USB.HEADER_LENGTH + 1 == 36
     values, _ = packets(300, seed=3)
     # Fill the inactive slots too, so every byte position is compared.
     rich = [encode_packet(i, [v] + [(v * k) % 4096 for k in range(2, NUM_SLOTS + 1)]) for i, v in enumerate(values)]
-    usb = ChordsUSBESP32S3.__new__(ChordsUSBESP32S3)  # skip its SIGINT handler; no port needed
+    usb = Chords_USB.__new__(Chords_USB)  # skip its SIGINT handler; no port needed
     usb.buffer, usb.num_channels, usb.packet_length = bytearray(), NUM_SLOTS, PACKET_LEN
     usb.data = np.zeros((NUM_SLOTS, 2000))
     ours = StreamDecoder()

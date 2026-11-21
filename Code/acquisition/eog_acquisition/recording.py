@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .protocol import BOARD_ID, RESOLUTION_BITS, SAMPLE_RATE, Sample
+from .protocol import BOARD_ID, RESOLUTION_BITS, SAMPLE_RATE
 
 FORMAT = 'equalcare-eog-recording/1'
 COLUMNS = ('sample_index', 'counter', 'raw', 'host_time', 'gap_before', 'stall', 'label', 'trial')
@@ -51,6 +51,8 @@ class Recorder:
         self._write_meta()
 
     def write(self, processed):
+        if self._file.closed:      # the reader thread may still hold this recorder for a sample after close()
+            return
         s = processed.sample
         self._csv.writerow((s.index, s.counter, s.raw, f'{s.host_time:.6f}', s.gap_before, int(s.stall),
                             processed.label, processed.trial))
@@ -80,13 +82,6 @@ class Recording:
     stall: np.ndarray
     label: list
     trial: np.ndarray
-
-    def samples(self):
-        """Yield (Sample, (label, trial)) in recorded order, for replay through a Pipeline."""
-        for i in range(len(self.index)):
-            yield (Sample(int(self.index[i]), int(self.counter[i]), int(self.raw[i]), float(self.host_time[i]),
-                          int(self.gap_before[i]), bool(self.stall[i])),
-                   (self.label[i], int(self.trial[i])))
 
     @property
     def sample_rate(self):

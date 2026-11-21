@@ -1,23 +1,20 @@
-"""Serial connection to the ESP32-S3 EOG firmware, built on the official chordspy Chords_USB.
+"""Serial connection to the ESP32-S3 EOG firmware (the Chords USB packet format, protocol.py).
 
-chordspy 0.2.2 has no ESP32-S3 profile, and its read loop keeps only a rolling window
-of the latest samples. This module adds the profile (16 slots, 250 Hz, 12-bit) and
-reuses Chords_USB for opening the port and WHORU identification, then streams with
-an adapter that hands over every decoded sample exactly once, in order.
+Opens the port, identifies the board with WHORU, then streams on a reader thread that hands
+over every decoded sample exactly once, in order.
 """
-import signal
 import threading
 import time
 
 import serial
-from .chords_compat import Chords_USB
 
-from .protocol import BAUD_RATE, BOARD_ID, NUM_SLOTS, RESOLUTION_BITS, SAMPLE_RATE, Sequencer, StreamDecoder
+from .protocol import BAUD_RATE, BOARD_ID, Sequencer, StreamDecoder
 
 DEFAULT_PORT = 'auto'   # the first USB port the firmware answers on, else Bluetooth (cli.open_device)
 BRIDGES = (0x10C4, 0x1A86, 0x303A, 0x0403)   # USB vendor ids: CP210x, CH34x, Espressif, FTDI
 NO_DATA_SECONDS = 1.0   # streaming but silent this long: report it
 DRAIN_SECONDS = 0.3     # after STOP, keep reading until quiet this long
+WHORU_TRIES = 3
 
 
 class DeviceError(RuntimeError):
@@ -29,23 +26,6 @@ def usb_serial_ports():
     from serial.tools import list_ports
     ports = [p for p in list_ports.comports() if p.vid is not None]
     return [p.device for p in sorted(ports, key=lambda p: (p.vid not in BRIDGES, p.device))]
-
-
-class ChordsUSBESP32S3(Chords_USB):
-    """Official Chords_USB with the missing ESP32-S3 profile; nothing else changed."""
-    supported_boards = {**Chords_USB.supported_boards,
-                        BOARD_ID: {'sampling_rate': SAMPLE_RATE, 'Num_channels': NUM_SLOTS,
-                                   'resolution': RESOLUTION_BITS}}
-
-
-def _chords_usb():
-    # Chords_USB.__init__ installs a Ctrl+C handler that calls sys.exit(); keep ours instead.
-    main = threading.current_thread() is threading.main_thread()
-    previous = signal.getsignal(signal.SIGINT) if main else None
-    usb = ChordsUSBESP32S3()
-    if main:
-        signal.signal(signal.SIGINT, previous)
-    return usb
 
 
 class EOGDevice:
@@ -79,15 +59,20 @@ class EOGDevice:
         except serial.SerialException as exc:
             raise DeviceError(f'Cannot open {self.port}: {exc}. Check the cable is in the board\'s UART port '
                               'and close the Arduino Serial Monitor/Plotter or any other program using it.') from exc
-        usb = _chords_usb()
-        if not usb.connect_hardware(self.port, BAUD_RATE, timeout=1):
-            raise DeviceError(f'{self.port} opened, but no {BOARD_ID} Chords firmware answered WHORU. '
+        try:
+            self.ser = serial.Serial(self.port, BAUD_RATE, timeout=0.05, write_timeout=1)
+        except serial.SerialException as exc:
+            raise DeviceError(f'Cannot open {self.port}: {exc}') from exc
+        board = ''
+        for _ in range(WHORU_TRIES):
+            board = self.command('WHORU', wait=1.0)
+            if board:
+                break
+        if board != BOARD_ID:
+            self.ser.close()
+            raise DeviceError(f'{self.port} is a {board}, not the {BOARD_ID} EOG firmware.' if board else
+                              f'{self.port} opened, but no {BOARD_ID} Chords firmware answered WHORU. '
                               'Flash Code/firmware/ESP32-S3 and check the baud rate (230400).')
-        if usb.board != BOARD_ID:
-            usb.ser.close()
-            raise DeviceError(f'{self.port} is a {usb.board}, not the {BOARD_ID} EOG firmware.')
-        self.ser = usb.ser
-        self.ser.timeout = 0.05
         return self.command('STATUS')
 
     def command(self, text, wait=0.3):

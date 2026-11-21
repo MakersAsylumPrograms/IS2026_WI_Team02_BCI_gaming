@@ -80,7 +80,6 @@ class Pipeline:
         self._sample_callbacks = []
         self._event_callbacks = []
         self._last_index = None
-        self.processed = 0
 
     def on_sample(self, callback):
         """callback(ProcessedSample) for every sample, e.g. plotting or later integration."""
@@ -107,11 +106,11 @@ class Pipeline:
         for sample in samples:
             self.process(sample)
 
-    def process(self, sample, tag=None):
+    def process(self, sample):
         if self._last_index is not None and sample.index <= self._last_index:
             raise ValueError(f'Sample {sample.index} is out of order or a duplicate (last {self._last_index}).')
         self._last_index = sample.index
-        label, trial = tag if tag is not None else self._tag
+        label, trial = self._tag
         detector, joystick, recorder = self.detector, self.joystick, self.recorder   # may be swapped meanwhile
         if sample.gap_before or sample.stall:
             if detector:
@@ -128,7 +127,6 @@ class Pipeline:
         processed = ProcessedSample(sample, clipped, label, trial, eye)
         if recorder:
             recorder.write(processed)
-        self.processed += 1
         for callback in tuple(self._sample_callbacks):    # a copy: callbacks may be removed meanwhile
             callback(processed)
         for event in events:
