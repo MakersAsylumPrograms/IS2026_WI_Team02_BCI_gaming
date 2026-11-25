@@ -27,9 +27,9 @@ recorded = pytest.mark.skipif(not all(p.exists() for p in ROUNDS), reason='the p
 def test_a_round_asks_for_each_signal_and_is_scored_as_prompts():
     steps = guided.round_steps(np.random.default_rng(1))
     labels = [s.label for s in steps if s.trial]
-    assert sorted(labels.count(x) for x in ('LEFT', 'RIGHT', 'BLINK', 'DOUBLE_BLINK')) == [3, 3, 3, 5]
+    assert sorted(labels.count(x) for x in ('LEFT', 'RIGHT', 'BLINK', 'DOUBLE_BLINK')) == [3, 3, 3, 8]
     assert steps[0].label == 'CENTER' and steps[0].seconds >= gestures.GestureModel().warmup
-    assert 60 < sum(s.seconds for s in steps) < 90
+    assert 80 < sum(s.seconds for s in steps) < 100
     # Laid out as a recording, the scorer finds every look and double blink as a prompt.
     fs, label, trial = 250, [], []
     for s in steps:
@@ -39,7 +39,7 @@ def test_a_round_asks_for_each_signal_and_is_scored_as_prompts():
                                                      np.zeros(len(label), int), np.zeros(len(label), bool),
                                                      label, np.array(trial), 'x')
     s = chords_calibration.score(recording, [])
-    assert (s['looks'], s['double_blinks'], s['false_moves']) == (6, 5, 0)
+    assert (s['looks'], s['double_blinks'], s['false_moves']) == (6, 8, 0)
 
 
 @recorded
@@ -90,12 +90,13 @@ def test_blinks_that_start_with_a_dip_are_noticed_and_caught():
 
 
 def test_a_model_whose_double_blinks_fail_is_not_approved():
-    metrics = dict(looks=12, look_hits=12, wrong_direction=0, double_blinks=10, select_hits=0, false_moves=0,
-                   false_selects=0, minutes=2.7, look_recall=1.0, look_precision=1.0, select_recall=0.0,
+    metrics = dict(looks=12, look_hits=12, wrong_direction=0, double_blinks=16, select_hits=0, false_moves=0,
+                   false_selects=0, minutes=3.0, look_recall=1.0, look_precision=1.0, select_recall=0.0,
                    false_commands_per_minute=0.0)
     assert not chords_calibration.passes(metrics)
-    assert guided._shortfalls(metrics) == ['double blinks caught 0 of 10 (needs 60%)']
-    assert chords_calibration.passes(dict(metrics, select_hits=6, select_recall=0.6))
+    assert guided._shortfalls(metrics) == ['double blinks caught 0 of 16 (needs 80%)']
+    assert not chords_calibration.passes(dict(metrics, select_hits=12, select_recall=0.75))
+    assert chords_calibration.passes(dict(metrics, select_hits=13, select_recall=0.812))
 
 
 def test_a_round_is_recorded_with_its_cues_while_samples_stream(tmp_path):

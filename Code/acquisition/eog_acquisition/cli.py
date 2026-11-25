@@ -287,7 +287,7 @@ def print_result(result):
 
 
 def cmd_calibrate_eyes(args):
-    """Calibrate the eyes now: about 2.5 minutes of cued looks and blinks, then a fit to them."""
+    """Calibrate the eyes now: about 3 minutes of cued looks and blinks, then a fit to them."""
     pipeline = Pipeline(detector=GestureDetector(gestures.load_model(args.model)))
     print('Eye calibration, two rounds of about 75 s. Follow each cue as soon as it appears:\n'
           '  LOOK LEFT / LOOK RIGHT  move only your eyes far to that side and hold\n'

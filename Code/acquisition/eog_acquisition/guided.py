@@ -1,6 +1,6 @@
 """Short guided eye sequences on the live signal.
 
-calibrate()  two rounds of cued looks, blinks and free viewing (about 2.5 minutes), recorded, then the
+calibrate()  two rounds of cued looks, blinks and free viewing (about 3 minutes), recorded, then the
              gesture thresholds are fitted to those two rounds only: this person, this electrode placement.
              The new model replaces the current one only if it passes chords_calibration.CRITERIA on
              each round with thresholds fitted on the other.
@@ -42,8 +42,8 @@ class Step:
         return CUES[self.label]
 
 
-def round_steps(rng, looks=6, single_blinks=3, double_blinks=5, natural=15.0, warmup=3.5):
-    """One round, about 75 s. Looks come in random order; the detector's warm-up is spent at the centre."""
+def round_steps(rng, looks=6, single_blinks=3, double_blinks=8, natural=15.0, warmup=3.5):
+    """One round, about 90 s. Looks come in random order; the detector's warm-up is spent at the centre."""
     sides = ['LEFT', 'RIGHT'] * (looks // 2) + ['LEFT'] * (looks % 2)
     rng.shuffle(sides)
     steps, trial = [Step('CENTER', 0, warmup)], 0
