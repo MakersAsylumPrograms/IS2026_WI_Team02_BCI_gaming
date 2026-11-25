@@ -64,7 +64,7 @@ Everyone's eye signals differ, so calibrate once per person and again if the ele
 
 1. On the patient screen menu, click **Calibrate eyes** (bottom of the screen; only mouse or
    keyboard can start it, not the eyes).
-2. Follow the cue on screen for about 2.5 minutes (two rounds, with a beep at each cue):
+2. Follow the cue on screen for about 3 minutes (two rounds, with a beep at each cue):
    *Look left* / *Look right*: move only your eyes far to that side and hold until the next cue.
    *Blink once* / *Blink twice*: firm blinks, about half a second apart for twice.
    *Look around normally*: use the screen as usual.
@@ -75,8 +75,8 @@ Everyone's eye signals differ, so calibrate once per person and again if the ele
    sending anything. Use it to check the electrodes before relying on the eyes.
 
 Approved means, on each round scored with settings fitted on the other: at least 90% of looks
-caught, at least 90% of look commands in the right direction, at most one false command a minute
-and no false select. That is a short check on one sitting; watch for false commands in real use.
+caught (11 of 12), at least 90% of look commands in the right direction, at least 80% of double
+blinks caught (13 of 16), at most one false command a minute and no false select. That is a short check on one sitting; watch for false commands in real use.
 
 The new settings are saved to `Code/acquisition/models/eog-gestures.json` (the previous one is kept
 in `Code/acquisition/data/models/`), and both rounds to `Code/acquisition/data/recordings/`. Commit
