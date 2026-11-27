@@ -626,6 +626,266 @@
         ],
         "description": "Requires ACKNOWLEDGED; PENDING returns 409. Repeated resolution is harmless."
       }
+    },
+    "/calibration": {
+      "post": {
+        "summary": "Start an eye calibration or eye test; patient",
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "calibrate",
+                      "test"
+                    ],
+                    "default": "calibrate"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/CalibrationJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "job"
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "DEVICE_OFFLINE (no heartbeat) or CALIBRATION_BUSY",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "summary": "The current calibration job (null if none); patient",
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/CalibrationJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "job"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Cancel the running calibration job; patient",
+        "security": [
+          {
+            "sessionCookie": [],
+            "csrfToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/CalibrationJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "job"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/calibration/device": {
+      "get": {
+        "summary": "Poll for a calibration job to run (id, mode, state); device. Counts as a heartbeat.",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/CalibrationJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "job"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "summary": "Report progress or the result of the current job; device",
+        "security": [
+          {
+            "deviceToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CalibrationJob"
+                  }
+                ],
+                "description": "id and state (running, fitting, done or failed) plus any CalibrationJob fields; others are ignored. A report for a cancelled or finished job changes nothing."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/CalibrationJob"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "job"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "INVALID_STATE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "STALE_JOB: not the current job",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -801,6 +1061,91 @@
           "id",
           "name",
           "device_id"
+        ]
+      },
+      "CalibrationJob": {
+        "type": "object",
+        "description": "An eye calibration ('calibrate') or eye test ('test') the patient screen asked for. The acquisition process runs it and reports progress; a request not taken up within 10 s, or a running job silent for 30 s, becomes failed.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "calibrate",
+              "test"
+            ]
+          },
+          "state": {
+            "enum": [
+              "requested",
+              "running",
+              "fitting",
+              "done",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "Current cue: CENTER, REST, LEFT, RIGHT, BLINK, DOUBLE_BLINK or NATURAL"
+          },
+          "cue": {
+            "type": "string"
+          },
+          "round": {
+            "type": "integer"
+          },
+          "rounds": {
+            "type": "integer"
+          },
+          "step": {
+            "type": "integer"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "seconds": {
+            "type": "number"
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "signals": {
+            "type": "array",
+            "description": "Test mode: the latest eye signals seen",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "LEFT",
+                    "RIGHT",
+                    "BLINK",
+                    "DOUBLE_BLINK"
+                  ]
+                },
+                "at": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "result": {
+            "type": "object",
+            "description": "Calibrate mode, when done: passed, flipped[] ('left/right', 'blink'), saved, shortfalls[], metrics{looks, look_hits, wrong_direction, double_blinks, select_hits, false_moves, false_selects, minutes}"
+          },
+          "message": {
+            "type": "string",
+            "description": "Why it failed"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "state"
         ]
       }
     },

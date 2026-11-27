@@ -1,4 +1,4 @@
-"""Recordings (raw samples + labels), their metadata, CYCLE event logs and replay.
+"""Recordings (raw samples + the prompt shown at each), their metadata, and event logs.
 
 A recording is two files:
   <name>.csv   sample_index,counter,raw,host_time,gap_before,stall,label,trial
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .protocol import BOARD_ID, RESOLUTION_BITS, SAMPLE_RATE, Sample
+from .protocol import BOARD_ID, RESOLUTION_BITS, SAMPLE_RATE
 
 FORMAT = 'equalcare-eog-recording/1'
 COLUMNS = ('sample_index', 'counter', 'raw', 'host_time', 'gap_before', 'stall', 'label', 'trial')
@@ -51,6 +51,8 @@ class Recorder:
         self._write_meta()
 
     def write(self, processed):
+        if self._file.closed:      # the reader thread may still hold this recorder for a sample after close()
+            return
         s = processed.sample
         self._csv.writerow((s.index, s.counter, s.raw, f'{s.host_time:.6f}', s.gap_before, int(s.stall),
                             processed.label, processed.trial))
@@ -81,13 +83,6 @@ class Recording:
     label: list
     trial: np.ndarray
 
-    def samples(self):
-        """Yield (Sample, (label, trial)) in recorded order, for replay through a Pipeline."""
-        for i in range(len(self.index)):
-            yield (Sample(int(self.index[i]), int(self.counter[i]), int(self.raw[i]), float(self.host_time[i]),
-                          int(self.gap_before[i]), bool(self.stall[i])),
-                   (self.label[i], int(self.trial[i])))
-
     @property
     def sample_rate(self):
         return self.meta.get('sample_rate', SAMPLE_RATE)
@@ -105,15 +100,8 @@ def load_recording(path):
                      [r['label'] for r in rows], column('trial', int))
 
 
-def replay(recording, pipeline):
-    """Run a recording through a pipeline exactly as live samples would go."""
-    for sample, tag in recording.samples():
-        pipeline.process(sample, tag)
-    return pipeline
-
-
 class EventLog:
-    """Appends emitted eye (CYCLE) and joystick events to a CSV file."""
+    """Appends emitted eye and joystick events to a CSV file."""
 
     def __init__(self, path):
         self.path = Path(path)

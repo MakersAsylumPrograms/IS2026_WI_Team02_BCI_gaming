@@ -1,81 +1,17 @@
-# FreeCAD temporary files
-*.FCTmp
-*.FCbak
-
-# Document backups
-User/Backup/
-
-# Compiled Python files
+# Python and Node
 __pycache__/
 *.pyc
-
-# Build files (if compiling FreeCAD)
-CMakeCache.txt
-CMakeFiles/
-Makefile
-*.so
-*.dylib
-*.dll
-*.exe
-
-
-# KiCad temporary files
-*.000
-*.bak
-*.bck
-*~
-_autosave-*
-*.tmp
-
-# Netlist files
-*.net
-
-# Autorouter files
-.dsn
-
-# Exported BOM files
-*.xml
-*.csv
-
-# Plot output (Gerbers, etc.)
-*.gbr
-*.drl
-*-drl.gbr
-*.pos
-*.rpt
-*.ps
-
-# CADSTAR files
-*.cst
-
-# Eagle files
-*.brd
-*.sch
-
-# Backup directory
-*-backups/
-
-# JLC PCB generated files
-/jlcpcb/
-
-# Version Control History
-/.history
-
-# EqualCare local runtime and credentials
 .venv/
 .pytest_cache/
-.env
-Code/backend/instance/
-Code/firmware/config.h
-# EOG recordings, models, event logs and diagnostics are shared with the team (decided 2026-11-12;
-# the repository is public). Backend credentials above stay private.
-Code/runtime/
-Code/launcher.local.json
-Code/launcher-config.json
-# ...except results the team chose to share (the *.csv rule above would hide the recordings)
-!Code/acquisition/hardware-tests/**/*.csv
-!Code/acquisition/data/**/*.csv
-
-# React + Tailwind screens: dependencies and the build the backend serves (the launcher rebuilds it)
 Code/frontend/node_modules/
 Code/frontend/dist/
+
+# Local settings, credentials and logs (never shared)
+.env
+Code/backend/instance/
+Code/launcher-config.json
+Code/runtime/
+
+# FreeCAD backups
+*.FCBak
+*.FCTmp

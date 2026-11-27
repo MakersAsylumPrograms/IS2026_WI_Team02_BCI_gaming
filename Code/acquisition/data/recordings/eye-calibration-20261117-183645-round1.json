@@ -1,0 +1,196 @@
+{
+  "format": "equalcare-eog-recording/1",
+  "board": "ESP32-S3",
+  "port": "BLE",
+  "sample_rate": 250,
+  "adc_bits": 12,
+  "units": "raw ADC counts (uncalibrated; not microvolts)",
+  "channel": "1 (GPIO 1, BioAmp EXG Pill v3, horizontal EOG)",
+  "in_plus_electrode": "left",
+  "started_utc": "2026-11-17T13:06:45.741+00:00",
+  "chordspy": "0.2.2",
+  "notes": "eye calibration, round 1 of 2",
+  "protocol": {
+    "steps": [
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 3.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "RIGHT",
+        "trial": 1,
+        "seconds": 2.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "LEFT",
+        "trial": 2,
+        "seconds": 2.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "RIGHT",
+        "trial": 3,
+        "seconds": 2.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "RIGHT",
+        "trial": 4,
+        "seconds": 2.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "LEFT",
+        "trial": 5,
+        "seconds": 2.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "LEFT",
+        "trial": 6,
+        "seconds": 2.5
+      },
+      {
+        "label": "CENTER",
+        "trial": 0,
+        "seconds": 2.0
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "BLINK",
+        "trial": 7,
+        "seconds": 2.0
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "BLINK",
+        "trial": 8,
+        "seconds": 2.0
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "BLINK",
+        "trial": 9,
+        "seconds": 2.0
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "DOUBLE_BLINK",
+        "trial": 10,
+        "seconds": 2.5
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "DOUBLE_BLINK",
+        "trial": 11,
+        "seconds": 2.5
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "DOUBLE_BLINK",
+        "trial": 12,
+        "seconds": 2.5
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "DOUBLE_BLINK",
+        "trial": 13,
+        "seconds": 2.5
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.5
+      },
+      {
+        "label": "DOUBLE_BLINK",
+        "trial": 14,
+        "seconds": 2.5
+      },
+      {
+        "label": "REST",
+        "trial": 0,
+        "seconds": 1.0
+      },
+      {
+        "label": "NATURAL",
+        "trial": 0,
+        "seconds": 15.0
+      }
+    ]
+  },
+  "stopped_utc": "2026-11-17T13:08:05.403+00:00",
+  "rows": 19920,
+  "summary": {
+    "health": {
+      "seconds": 523.55,
+      "received": 130890,
+      "missing": 0,
+      "stalls": 1,
+      "loss_percent": 0.0,
+      "device_rate": 250.0,
+      "received_rate": 250.0,
+      "clipped_samples": 7786,
+      "clipping_now": false,
+      "flat_now": false,
+      "raw_min": 811,
+      "raw_max": 2238
+    },
+    "finished": true
+  }
+}

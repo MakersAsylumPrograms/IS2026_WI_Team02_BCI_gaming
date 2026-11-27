@@ -1,47 +1,8 @@
-"""Per-sample processing: causal EOG filter, signal health and the sample pipeline."""
+"""Per-sample processing: signal health and the sample pipeline."""
 from collections import deque
 from dataclasses import dataclass
 
-import numpy as np
-from scipy.signal import butter, sosfilt, sosfilt_zi
-
 from .protocol import ADC_MAX, SAMPLE_RATE
-
-FILTER_LOW_HZ = 0.5
-FILTER_HIGH_HZ = 20.0
-WARMUP_SECONDS = 1.5  # classification is suppressed this long after a start or discontinuity
-
-
-class EOGFilter:
-    """Causal 0.5-20 Hz band-pass for classification (raw values are never modified).
-
-    A first-order high-pass is used on purpose: higher orders undershoot after a gaze
-    step, and that undershoot would look like a return movement. Call reset() after
-    any discontinuity; the state restarts from the next sample as a steady level.
-    """
-
-    def __init__(self, sample_rate=SAMPLE_RATE, low=FILTER_LOW_HZ, high=FILTER_HIGH_HZ, warmup=WARMUP_SECONDS):
-        self.sos = np.vstack([butter(1, low, 'highpass', fs=sample_rate, output='sos'),
-                              butter(2, high, 'lowpass', fs=sample_rate, output='sos')])
-        self._unit_state = sosfilt_zi(self.sos)
-        self.warmup_samples = int(round(warmup * sample_rate))
-        self.reset()
-
-    def reset(self):
-        self._state = None
-        self._warmup_left = self.warmup_samples
-
-    def process(self, value):
-        if self._state is None:
-            self._state = self._unit_state * value
-        out, self._state = sosfilt(self.sos, (value,), zi=self._state)
-        if self._warmup_left:
-            self._warmup_left -= 1
-        return float(out[0])
-
-    @property
-    def ready(self):
-        return self._warmup_left == 0
 
 
 class HealthMonitor:
@@ -94,45 +55,44 @@ class HealthMonitor:
 @dataclass(frozen=True)
 class ProcessedSample:
     sample: object      # protocol.Sample (raw, unchanged)
-    filtered: float     # 0.5-20 Hz band-passed ADC counts
     clipped: bool
-    usable: bool        # filter warmed up and not clipped
     label: str          # protocol label active when the sample arrived ('' outside sessions)
     trial: int
-    ready: bool = True  # filter warmed up (no recent start or discontinuity)
-    gaze: float = float('nan')  # recovered gaze level from the CYCLE detector (nan without one)
+    eye: float = float('nan')  # the eye detector's signal (Chords-Web units; nan without a detector)
 
 
 class Pipeline:
     """Every accepted sample passes through process() exactly once, in order:
-    health -> filter -> detector -> joystick -> recorder -> sample callbacks -> event callbacks.
+    health -> detector -> joystick -> recorder -> sample callbacks -> event callbacks.
 
     Device reader threads call it with batches: `device.start(pipeline)`.
-    The EOG detector (cycle.CycleDetector) and the joystick (joystick.JoystickReader) are optional;
+    The eye detector (gestures.GestureDetector) and the joystick (joystick.JoystickReader) are optional.
+    Either can be swapped while streaming (a recalibrated detector, a recorder for one round);
     raw values are never modified.
     """
 
-    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None, double_blink=False):
-        self.filter = EOGFilter(sample_rate)
+    def __init__(self, sample_rate=SAMPLE_RATE, detector=None, recorder=None, joystick=None):
         self.health = HealthMonitor(sample_rate)
         self.detector = detector
         self.joystick = joystick
-        from .blink import DoubleBlinkDetector
-        self.blink = DoubleBlinkDetector(sample_rate) if double_blink else None
         self.recorder = recorder
         self._tag = ('', 0)
         self._sample_callbacks = []
         self._event_callbacks = []
         self._last_index = None
-        self.processed = 0
 
     def on_sample(self, callback):
         """callback(ProcessedSample) for every sample, e.g. plotting or later integration."""
         self._sample_callbacks.append(callback)
 
     def on_event(self, callback):
-        """callback(event) for each CycleEvent (eyes) and JoystickEvent (joystick), in sample order."""
+        """callback(event) for each GestureEvent (eyes) and JoystickEvent (joystick), in sample order."""
         self._event_callbacks.append(callback)
+
+    def remove_callback(self, callback):
+        for callbacks in (self._sample_callbacks, self._event_callbacks):
+            if callback in callbacks:
+                callbacks.remove(callback)
 
     def set_label(self, label, trial=0):
         self._tag = (label, trial)  # one assignment, so the reader thread never sees half an update
@@ -146,39 +106,30 @@ class Pipeline:
         for sample in samples:
             self.process(sample)
 
-    def process(self, sample, tag=None):
+    def process(self, sample):
         if self._last_index is not None and sample.index <= self._last_index:
             raise ValueError(f'Sample {sample.index} is out of order or a duplicate (last {self._last_index}).')
         self._last_index = sample.index
-        label, trial = tag if tag is not None else self._tag
+        label, trial = self._tag
+        detector, joystick, recorder = self.detector, self.joystick, self.recorder   # may be swapped meanwhile
         if sample.gap_before or sample.stall:
-            self.filter.reset()  # never filter or detect across a hole in the data
-            if self.detector:
-                self.detector.reset()
-            if self.joystick:
-                self.joystick.reset()
-        filtered = self.filter.process(sample.raw)
+            if detector:
+                detector.reset()  # never detect across a hole in the data
+            if joystick:
+                joystick.reset()
         clipped = self.health.update(sample)
-        ready = self.filter.ready
-        events, gaze = [], float('nan')
-        if self.detector:
-            events = self.detector.step(sample.raw, clipped, sample.index, sample.host_time)
-            gaze = self.detector.value
-        if self.joystick:
-            events = events + self.joystick.update(sample)
-        if self.blink:
-            selections = self.blink.update(sample, filtered, ready)
-            if selections:
-                events = [event for event in events if event.source != 'eog'] + selections
-                if self.detector:
-                    self.detector.reset()
-        processed = ProcessedSample(sample, filtered, clipped, ready and not clipped, label, trial, ready, gaze)
-        if self.recorder:
-            self.recorder.write(processed)
-        self.processed += 1
-        for callback in self._sample_callbacks:
+        events, eye = [], float('nan')
+        if detector:
+            events = detector.step(sample.raw, clipped, sample.index, sample.host_time)
+            eye = detector.value
+        if joystick:
+            events = events + joystick.update(sample)
+        processed = ProcessedSample(sample, clipped, label, trial, eye)
+        if recorder:
+            recorder.write(processed)
+        for callback in tuple(self._sample_callbacks):    # a copy: callbacks may be removed meanwhile
             callback(processed)
         for event in events:
-            for callback in self._event_callbacks:
+            for callback in tuple(self._event_callbacks):
                 callback(event)
         return processed

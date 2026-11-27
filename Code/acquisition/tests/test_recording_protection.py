@@ -22,7 +22,6 @@ def test_orphan_metadata_is_preserved(tmp_path):
 
 
 def test_serial_import_does_not_load_application():
-    from eog_acquisition.chords_compat import Chords_USB
-    assert Chords_USB.SYNC_BYTE1 == 0xC7
+    import eog_acquisition.device  # noqa: F401
     assert 'chordspy.app' not in sys.modules
     assert 'pylsl' not in sys.modules

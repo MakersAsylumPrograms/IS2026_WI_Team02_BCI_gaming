@@ -7,8 +7,8 @@ Two kinds of recording are accepted:
   from the cue sheet the person followed by the clock (SEQUENCE, copied from
   `Calibration Sequence.xlsx`), so a look counts for its cue if it starts up to LOOK_EARLY
   seconds before the cue or any time until just after its hold ends.
-* This package's own recordings (`sample_index,...,raw,...,label,trial`, from `look-test`,
-  `blink-test` or `session`, over USB or Bluetooth): raw ADC counts with the prompt shown at
+* This package's own recordings (`sample_index,...,raw,...,label,trial`: eye-calibration rounds and
+  the older look and blink tests, over USB or Bluetooth): raw ADC counts with the prompt shown at
   each sample. They go through the same Chords-Web filter as live use, and since the prompts
   were timed by the program, the windows are tight (PROMPTED).
 
@@ -42,7 +42,11 @@ BLINK_EARLY = 1.0                   # Chords sheet: s a double blink may start b
 # Prompted recordings: (s before the prompt, s after it ends) in which the answer may start
 PROMPTED = dict(LEFT=(0.5, 0.5), RIGHT=(0.5, 0.5), DOUBLE_BLINK=(BLINK_EARLY, 0.6))
 # What "works" means here, checked on recordings the thresholds were NOT fitted on:
-CRITERIA = dict(look_recall=0.9, look_precision=0.9, false_commands_per_minute=1.0, false_selects=0)
+# select_recall: SELECT is how a request is sent, so it must work reliably. 80% of the 16 double blinks in a
+# sitting (13 of 16) passes a detector that truly catches 60% only about 1 time in 15 and one that catches
+# 90% about 19 times in 20; 6 of 10 at 60% passed a coin-flip detector more than a third of the time.
+CRITERIA = dict(look_recall=0.9, look_precision=0.9, select_recall=0.8, false_commands_per_minute=1.0,
+                false_selects=0)
 # Looks are fitted first (with the blink settings as they are), then the blinks.
 LOOK_GRID = dict(look_peak=(0.45, 0.5, 0.55, 0.6), look_width=(0.16, 0.18, 0.2, 0.22), tail=(0.0, 0.04, 0.08))
 BLINK_GRID = dict(blink_rise=(0.35, 0.4, 0.5), blink_fall_within=(0.35, 0.4, 0.5))
@@ -112,6 +116,11 @@ class PromptedRecording:
         return out
 
 
+def file_hash(path):
+    """SHA-256 of a recording with line endings normalised, so a Windows checkout (CRLF) hashes the same."""
+    return hashlib.sha256(Path(path).read_bytes().replace(b'\r\n', b'\n')).hexdigest()
+
+
 def load_chords_csv(path):
     path = Path(path)
     with open(path, newline='', encoding='utf-8-sig') as handle:
@@ -121,7 +130,7 @@ def load_chords_csv(path):
     counter = np.array([int(r['Counter']) for r in rows])
     gap = np.concatenate([[0], (np.diff(counter) - 1) % 256])
     return ChordsRecording(path.stem, np.array([float(r['Channel1']) for r in rows]),
-                           np.arange(len(rows)) + np.cumsum(gap), gap, hashlib.sha256(path.read_bytes()).hexdigest())
+                           np.arange(len(rows)) + np.cumsum(gap), gap, file_hash(path))
 
 
 def load_prompted(path):
@@ -138,7 +147,7 @@ def load_prompted(path):
         values[i] = chain.process(int(raw))
     clipped = (r.raw <= 8) | (r.raw >= 4087)
     return PromptedRecording(path.stem, values, r.index, breaks.astype(int), clipped, list(r.label), r.trial,
-                             hashlib.sha256(path.read_bytes()).hexdigest(), r.sample_rate)
+                             file_hash(path), r.sample_rate)
 
 
 def load_any(path):
@@ -177,7 +186,7 @@ def score(recording, events):
                 return i, event
         return None, None
 
-    for start, end, cue, answer_from, answer_to in windows:
+    for start, _, cue, answer_from, answer_to in windows:
         if cue in ('LEFT', 'RIGHT'):
             result['looks'] += 1
             i, event = first(('LEFT', 'RIGHT'), answer_from, answer_to)
@@ -223,6 +232,7 @@ def total(scores):
 def passes(t):
     return bool(t['looks'] and t['look_recall'] >= CRITERIA['look_recall']
                 and t['look_precision'] is not None and t['look_precision'] >= CRITERIA['look_precision']
+                and t['double_blinks'] and t['select_recall'] >= CRITERIA['select_recall']
                 and t['false_commands_per_minute'] <= CRITERIA['false_commands_per_minute']
                 and t['false_selects'] <= CRITERIA['false_selects'])
 

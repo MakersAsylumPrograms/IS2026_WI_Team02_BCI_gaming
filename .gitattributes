@@ -1,0 +1,5 @@
+# Recordings and models are data: keep their bytes identical on every machine (no CRLF conversion).
+Code/acquisition/data/** -text
+Code/acquisition/models/** -text
+Code/acquisition/tests/fixtures/** -text
+*.cmd text eol=crlf

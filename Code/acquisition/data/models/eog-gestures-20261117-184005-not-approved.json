@@ -1,0 +1,270 @@
+{
+  "format": "equalcare-eog-gestures/1",
+  "sample_rate": 250,
+  "adc_bits": 12,
+  "notch_hz": 50,
+  "in_plus": "left",
+  "left_polarity": -1,
+  "blink_polarity": 1,
+  "onset": 0.25,
+  "max_pulse": 1.0,
+  "confirm": 0.5,
+  "tail_from": 0.4,
+  "move_peak": 0.4,
+  "tail": 0.04,
+  "return_ratio": 2.0,
+  "away_timeout": 8.0,
+  "look_peak": 0.5,
+  "look_width": 0.18,
+  "blink_peak": 0.45,
+  "rebound": 0.25,
+  "rebound_ratio": 0.3,
+  "recover": 0.5,
+  "rebound_max": 1.5,
+  "blink_rise": 0.35,
+  "blink_window": 0.25,
+  "blink_fall": 0.7,
+  "blink_fall_within": 0.35,
+  "blink_recover": 0.05,
+  "blink_recover_within": 0.45,
+  "blink_turn": 0.12,
+  "blink_weak_rise": 0.3,
+  "blink_weak_fall": 0.5,
+  "blink_firm_rise": 0.7,
+  "double_min": 0.2,
+  "double_max": 0.85,
+  "select_cooldown": 1.0,
+  "max_clipped": 0.35,
+  "settle": 1.0,
+  "warmup": 3.0,
+  "validation": {
+    "passed": false,
+    "method": "2-fold, held out by recording",
+    "criteria": {
+      "look_recall": 0.9,
+      "look_precision": 0.9,
+      "false_commands_per_minute": 1.0,
+      "false_selects": 0
+    },
+    "model_id": "bb4c70e37e7ca7194bda63fa59606c89bf2d88f55e8eecad855917f9db85b9eb",
+    "metrics": {
+      "looks": 12,
+      "look_hits": 9,
+      "wrong_direction": 0,
+      "double_blinks": 10,
+      "select_hits": 0,
+      "false_moves": 0,
+      "false_selects": 1,
+      "minutes": 2.66,
+      "look_recall": 0.75,
+      "look_precision": 1.0,
+      "select_recall": 0.0,
+      "false_commands_per_minute": 0.38
+    }
+  },
+  "calibration": {
+    "sources": [
+      {
+        "file": "eye-calibration-20261117-184005-round1.csv",
+        "kind": "prompted",
+        "sha256": "51c1b50708b5c568b03c47545b932dad45f04eb9f6070645a20e95b55e5cff98",
+        "seconds": 79.7,
+        "samples_missing": 0
+      },
+      {
+        "file": "eye-calibration-20261117-184005-round2.csv",
+        "kind": "prompted",
+        "sha256": "b2b030e7ca1633ee895124912573c8c64e6ac9af1df14fd7d9bf0a0dbd2be34d",
+        "seconds": 79.6,
+        "samples_missing": 0
+      }
+    ],
+    "signal": "Chords-Web channel 1: its high-pass (0.1 Hz), EOG 10 Hz low-pass, 50 Hz notch; 250 Hz, 12-bit",
+    "electrodes": "IN+ left eye outer corner, IN- right eye outer corner, REF behind the right ear",
+    "cue_sheet": "Calibration Sequence.xlsx",
+    "look_window_seconds": [
+      -3.0,
+      0.5
+    ],
+    "prompted_windows": {
+      "LEFT": [
+        0.5,
+        0.5
+      ],
+      "RIGHT": [
+        0.5,
+        0.5
+      ],
+      "DOUBLE_BLINK": [
+        1.0,
+        0.6
+      ]
+    },
+    "grid": {
+      "look_peak": [
+        0.45,
+        0.5,
+        0.55,
+        0.6
+      ],
+      "look_width": [
+        0.16,
+        0.18,
+        0.2,
+        0.22
+      ],
+      "tail": [
+        0.0,
+        0.04,
+        0.08
+      ],
+      "blink_rise": [
+        0.35,
+        0.4,
+        0.5
+      ],
+      "blink_fall_within": [
+        0.35,
+        0.4,
+        0.5
+      ]
+    },
+    "tied_look_settings": 8,
+    "tied_blink_settings": 1,
+    "held_out": [
+      {
+        "recording": "eye-calibration-20261117-184005-round1",
+        "fitted_without_it": {
+          "look_peak": 0.5,
+          "look_width": 0.18,
+          "tail": 0.04,
+          "blink_rise": 0.4,
+          "blink_fall_within": 0.35
+        },
+        "looks": 6,
+        "look_hits": 6,
+        "wrong_direction": 0,
+        "missed_looks": [],
+        "double_blinks": 5,
+        "select_hits": 0,
+        "missed_double_blinks": [
+          45.0,
+          48.96,
+          53.12,
+          57.12,
+          61.16
+        ],
+        "false_moves": 0,
+        "false_selects": 0,
+        "false_by_cue": {},
+        "minutes": 1.33
+      },
+      {
+        "recording": "eye-calibration-20261117-184005-round2",
+        "fitted_without_it": {
+          "look_peak": 0.5,
+          "look_width": 0.2,
+          "tail": 0.0,
+          "blink_rise": 0.35,
+          "blink_fall_within": 0.4
+        },
+        "looks": 6,
+        "look_hits": 3,
+        "wrong_direction": 0,
+        "missed_looks": [
+          10.08,
+          14.64,
+          19.2
+        ],
+        "double_blinks": 5,
+        "select_hits": 0,
+        "missed_double_blinks": [
+          44.92,
+          48.96,
+          53.04,
+          57.04,
+          61.08
+        ],
+        "false_moves": 0,
+        "false_selects": 1,
+        "false_by_cue": {
+          "NATURAL": 1
+        },
+        "minutes": 1.33
+      }
+    ],
+    "held_out_total": {
+      "looks": 12,
+      "look_hits": 9,
+      "wrong_direction": 0,
+      "double_blinks": 10,
+      "select_hits": 0,
+      "false_moves": 0,
+      "false_selects": 1,
+      "minutes": 2.66,
+      "look_recall": 0.75,
+      "look_precision": 1.0,
+      "select_recall": 0.0,
+      "false_commands_per_minute": 0.38
+    },
+    "in_sample": [
+      {
+        "recording": "eye-calibration-20261117-184005-round1",
+        "looks": 6,
+        "look_hits": 6,
+        "wrong_direction": 0,
+        "missed_looks": [],
+        "double_blinks": 5,
+        "select_hits": 1,
+        "missed_double_blinks": [
+          45.0,
+          53.12,
+          57.12,
+          61.16
+        ],
+        "false_moves": 0,
+        "false_selects": 0,
+        "false_by_cue": {},
+        "minutes": 1.33
+      },
+      {
+        "recording": "eye-calibration-20261117-184005-round2",
+        "looks": 6,
+        "look_hits": 3,
+        "wrong_direction": 0,
+        "missed_looks": [
+          10.08,
+          14.64,
+          19.2
+        ],
+        "double_blinks": 5,
+        "select_hits": 0,
+        "missed_double_blinks": [
+          44.92,
+          48.96,
+          53.04,
+          57.04,
+          61.08
+        ],
+        "false_moves": 0,
+        "false_selects": 0,
+        "false_by_cue": {},
+        "minutes": 1.33
+      }
+    ],
+    "in_sample_total": {
+      "looks": 12,
+      "look_hits": 9,
+      "wrong_direction": 0,
+      "double_blinks": 10,
+      "select_hits": 1,
+      "false_moves": 0,
+      "false_selects": 0,
+      "minutes": 2.66,
+      "look_recall": 0.75,
+      "look_precision": 1.0,
+      "select_recall": 0.1,
+      "false_commands_per_minute": 0.0
+    }
+  }
+}

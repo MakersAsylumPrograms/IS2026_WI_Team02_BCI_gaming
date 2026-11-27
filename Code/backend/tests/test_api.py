@@ -12,7 +12,9 @@ from app import create_app, TYPES
 @pytest.fixture
 def system(tmp_path):
     now = [100.0]
-    config = dict(TESTING=True, DATABASE=str(tmp_path / 'db.sqlite3'),
+    (tmp_path / 'site' / 'patient').mkdir(parents=True)          # a built page, without needing `npm run build`
+    (tmp_path / 'site' / 'patient' / 'index.html').write_text('patient', encoding='utf-8')
+    config = dict(TESTING=True, DATABASE=str(tmp_path / 'db.sqlite3'), FRONTEND=str(tmp_path / 'site'),
                   PATIENT_PASSWORD='patient-test', STAFF_PASSWORD='staff-test',
                   DEVICE_TOKEN='device-test', SECRET_KEY='test-secret', CLOCK=lambda: now[0])
     app = create_app(config)
@@ -65,6 +67,10 @@ def test_closed_loop_and_retry(system, kind):
     rows = patient.get('/api/v1/requests').json['requests']
     assert len(rows) == 2 and rows[0]['acknowledged_at'] and rows[0]['resolved_at']
     assert staff.post(f'/api/v1/requests/{rid}/acknowledge', headers=sh).json['request']['status'] == 'RESOLVED'
+    # Resolved more than a day ago: still stored, no longer sent to the screens every second.
+    with sqlite3.connect(app.config['DATABASE']) as conn:
+        conn.execute("UPDATE requests SET resolved_at='2000-01-01T00:00:00+00:00' WHERE id=?", (rid,))
+    assert [r['status'] for r in staff.get('/api/v1/requests').json['requests']] == ['PENDING']
 
 
 def test_roles_csrf_and_validation(system):
@@ -320,3 +326,32 @@ def test_input_sources_share_the_contract(system, source):
     assert emit(app, source=source, command='SELECT').json['accepted']
     result = poll(patient, initial).json['events']
     assert len(result) == 1 and result[0]['source'] == source and result[0]['command'] == 'SELECT'
+
+
+def test_eye_calibration_job_lifecycle(system):
+    app, _, now = system
+    patient, ph = login(app, 'patient')
+    device = app.test_client()
+    dh = {'Authorization': 'Bearer device-test'}
+    assert patient.post('/api/v1/calibration', json={'mode': 'calibrate'}, headers=ph).json['error']['code'] == 'DEVICE_OFFLINE'
+    assert device.post('/api/v1/heartbeat', json={'device_id': 'esp32-01'}, headers=dh).status_code == 200
+    assert patient.post('/api/v1/calibration', json={'mode': 'other'}, headers=ph).status_code == 400
+    assert patient.post('/api/v1/calibration', json={'mode': 'calibrate'}, headers={}).status_code == 403   # CSRF
+    job = patient.post('/api/v1/calibration', json={'mode': 'calibrate'}, headers=ph).json['job']
+    assert job['state'] == 'requested' and 'since' not in job
+    assert device.get('/api/v1/calibration/device').status_code == 401                                        # token
+    assert device.get('/api/v1/calibration/device', headers=dh).json['job'] == dict(id=job['id'], mode='calibrate',
+                                                                                    state='requested')
+    put = lambda **body: device.put('/api/v1/calibration/device', json=body, headers=dh)                     # noqa: E731
+    assert put(id='other', state='running').json['error']['code'] == 'STALE_JOB'
+    assert put(id=job['id'], state='bogus').status_code == 400
+    assert put(id=job['id'], state='running', label='LEFT', cue='Look LEFT', progress=0.1, extra='dropped').status_code == 200
+    seen = patient.get('/api/v1/calibration').json['job']
+    assert (seen['state'], seen['label'], seen['progress']) == ('running', 'LEFT', 0.1) and 'extra' not in seen
+    now[0] += 31                                                                                              # silent too long
+    assert patient.get('/api/v1/calibration').json['job']['state'] == 'failed'
+    assert put(id=job['id'], state='done').json['job']['state'] == 'failed'          # a late report changes nothing
+    device.post('/api/v1/heartbeat', json={'device_id': 'esp32-01'}, headers=dh)
+    job = patient.post('/api/v1/calibration', json={'mode': 'test'}, headers=ph).json['job']
+    assert patient.delete('/api/v1/calibration', headers=ph).json['job']['state'] == 'cancelled'
+    assert device.get('/api/v1/calibration/device', headers=dh).json['job']['state'] == 'cancelled'

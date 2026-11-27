@@ -1,5 +1,5 @@
 import {useEffect} from 'react';
-import {Check, CircleCheck, Gamepad2, HeartHandshake, Keyboard, LoaderCircle, Send, Sun, TriangleAlert} from 'lucide-react';
+import {ArrowBigLeft, ArrowBigRight, Check, CircleCheck, Eye, Gamepad2, HeartHandshake, Keyboard, LoaderCircle, ScanEye, Send, Sun, TriangleAlert} from 'lucide-react';
 import Shell from '../components/Shell.jsx';
 import {Kbd} from '../components/ui.jsx';
 import {useStore} from '../lib/store.js';
@@ -36,8 +36,9 @@ function PatientScreen({app}) {
       </div>
 
       {view.step !== undefined && <Steps step={view.step} />}
+      {view.eyes && <EyesPanel job={view.eyes} />}
       <Options app={app} view={view} />
-      <Footer device={view.device} />
+      <Footer app={app} view={view} />
     </section>
   );
 }
@@ -54,6 +55,25 @@ function Hero({view}) {
   }
   if (view.name === 'loading') {
     return <Circle className="bg-teal-50 text-teal-600"><LoaderCircle className="size-12 animate-spin" /></Circle>;
+  }
+  if (view.name === 'eyes') {
+    const job = view.eyes;
+    if (job.state === 'requested' || job.state === 'fitting') {
+      return <Circle className="bg-indigo-50 text-indigo-600"><LoaderCircle className="size-12 animate-spin" /></Circle>;
+    }
+    if (job.state === 'running' && view.cue === 'LEFT') {
+      return <Circle className="bg-indigo-600 text-white" pulse="bg-indigo-300"><ArrowBigLeft className="size-16" /></Circle>;
+    }
+    if (job.state === 'running' && view.cue === 'RIGHT') {
+      return <Circle className="bg-indigo-600 text-white" pulse="bg-indigo-300"><ArrowBigRight className="size-16" /></Circle>;
+    }
+    if (job.state === 'done' && job.result?.passed) {
+      return <Circle className="bg-emerald-500 text-white"><CircleCheck className="size-12" /></Circle>;
+    }
+    if (job.state === 'failed' || (job.state === 'done' && job.result && !job.result.passed)) {
+      return <Circle className="bg-amber-100 text-amber-600"><TriangleAlert className="size-12" /></Circle>;
+    }
+    return <Circle className="bg-indigo-100 text-indigo-700"><Eye className="size-12" /></Circle>;
   }
   if (view.name === 'uncertain') {
     return <Circle className="bg-amber-100 text-amber-600"><TriangleAlert className="size-12" /></Circle>;
@@ -84,6 +104,54 @@ function Circle({className, pulse, children}) {
       {pulse && <span className={`absolute inset-0 rounded-full motion-safe:animate-breathe ${pulse}`} />}
       <span className={`relative grid size-28 place-items-center rounded-full shadow-sm ${className}`}>{children}</span>
     </span>
+  );
+}
+
+const SIGNAL_TEXT = {LEFT: '← Left', RIGHT: 'Right →', BLINK: 'Blink', DOUBLE_BLINK: 'Double blink'};
+
+// Progress, the signals seen (test) and the numbers behind a calibration result.
+function EyesPanel({job}) {
+  const metrics = job.result?.metrics;
+  const running = job.state === 'running' || job.state === 'fitting';
+  return (
+    <div id="eyes" className="mx-auto mt-8 flex w-full max-w-2xl flex-col items-center gap-6">
+      {running && (
+        <div className="w-full">
+          <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200" role="progressbar"
+               aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((job.progress ?? 0) * 100)}>
+            <div className="h-full rounded-full bg-indigo-500 transition-[width] duration-300"
+                 style={{width: `${Math.round((job.progress ?? 0) * 100)}%`}} />
+          </div>
+          {job.rounds > 1 && <p className="mt-2 text-center text-sm text-slate-500">Round {job.round} of {job.rounds}</p>}
+        </div>
+      )}
+      {job.mode === 'test' && (
+        <ul id="signals" aria-live="polite" className="flex min-h-14 flex-wrap justify-center gap-3">
+          {(job.signals ?? []).map(signal => (
+            <li key={`${signal.kind}:${signal.at}`}
+                className="rounded-2xl bg-indigo-600 px-5 py-3 text-xl font-bold text-white shadow-md motion-safe:animate-rise">
+              {SIGNAL_TEXT[signal.kind] ?? signal.kind}
+            </li>
+          ))}
+        </ul>
+      )}
+      {metrics && (
+        <dl id="eyes-result" className="grid w-full grid-cols-3 gap-4 text-center">
+          <Metric label="Looks right" value={`${metrics.look_hits} / ${metrics.looks}`} />
+          <Metric label="Double blinks" value={`${metrics.select_hits} / ${metrics.double_blinks}`} />
+          <Metric label="False commands" value={metrics.false_moves + metrics.false_selects + metrics.wrong_direction} />
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function Metric({label, value}) {
+  return (
+    <div className="rounded-2xl bg-white/90 p-4 shadow-sm ring-1 ring-slate-200">
+      <dt className="text-sm font-medium text-slate-500">{label}</dt>
+      <dd className="mt-1 text-3xl font-bold text-slate-900">{value}</dd>
+    </div>
   );
 }
 
@@ -126,6 +194,7 @@ function Options({app, view}) {
   // A single row on laptop screens, so left/right (eyes, joystick, arrows)
   // moves the highlight the way it looks like it should.
   const layout = big ? 'max-w-6xl grid-cols-2 xl:grid-cols-4'
+    : count === 3 ? 'max-w-5xl grid-cols-3'
     : count === 2 ? 'max-w-3xl grid-cols-2'
     : 'max-w-sm grid-cols-1';
   return (
@@ -173,7 +242,8 @@ function Option({option, index, big, on, onPick}) {
   );
 }
 
-function Footer({device}) {
+function Footer({app, view}) {
+  const device = view.device;
   const tone = {
     ok: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
     warn: 'bg-amber-50 text-amber-900 ring-amber-200',
@@ -189,6 +259,19 @@ function Footer({device}) {
         <span className="px-1 text-slate-300">·</span>
         <Kbd>Esc</Kbd> back
       </p>
+      {view.name === 'menu' && (
+        // Mouse / keyboard only: never one of the options, so eyes and joystick cannot start it.
+        <p className="flex items-center gap-2">
+          <button type="button" id="calibrate-eyes" onClick={() => app.startEyes('calibrate')}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1.5 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50">
+            <ScanEye className="size-4" aria-hidden="true" />Calibrate eyes
+          </button>
+          <button type="button" id="test-eyes" onClick={() => app.startEyes('test')}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1.5 font-medium text-indigo-700 ring-1 ring-indigo-200 hover:bg-indigo-50">
+            <Eye className="size-4" aria-hidden="true" />Test eyes
+          </button>
+        </p>
+      )}
       <p id="device" className={`hint inline-flex items-center gap-2 rounded-full px-3 py-1.5 font-medium ring-1 empty:hidden ${tone}`}>
         {device.text && <><Gamepad2 className="size-4 shrink-0" aria-hidden="true" />{device.text}</>}
       </p>

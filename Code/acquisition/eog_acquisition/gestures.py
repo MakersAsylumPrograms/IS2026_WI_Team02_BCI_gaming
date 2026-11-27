@@ -59,7 +59,7 @@ class GestureModel:
     look_width: float = 0.18     # ... and beyond `onset` for at least this long (s)
     # Blinks, as the look detector sees them: a spike whose opposite swing is deep and dies away.
     # These only keep blinks from counting as looks; SELECT comes from the blink_* rules below.
-    blink_peak: float = 0.45     # a spike this tall with such a swing is a blink, not a movement
+    blink_peak: float = 0.45     # unused since 2026-11-14 (BlinkPairs replaced it); kept so saved models keep their id
     rebound: float = 0.25        # the swing after it is at least this deep ...
     rebound_ratio: float = 0.3   # ... and at least this share of the spike ...
     recover: float = 0.5         # ... and less than this share of it is left at the end of the watch
@@ -87,11 +87,6 @@ class GestureModel:
     settle: float = 1.0          # s of quiet signal needed after saturation or an artefact
     warmup: float = 3.0          # s without commands after start or any gap in the data
     validation: dict = None
-
-    @property
-    def threshold(self):
-        """The band the live plot draws (same attribute as CycleModel)."""
-        return self.look_peak
 
     def to_dict(self):
         return dict(format=FORMAT, **asdict(self))
@@ -151,6 +146,7 @@ class BlinkPairs:
         self.recover_within = int(m.blink_recover_within * fs)
         self.pair_min, self.pair_max = m.double_min * fs, m.double_max * fs
         self.cooldown_samples = int(m.select_cooldown * fs)
+        self.count = 0                       # blinks seen so far, single or paired; never reset
         self.reset()
 
     def blink_between(self, first, last):
@@ -192,6 +188,7 @@ class BlinkPairs:
                             grade = (2 if rise >= self.firm_rise else 1) if full else 0
                             self._candidate = (pn, pv, pi, en, ev, drop, grade)
                             self.peaks.append(pn)
+                            self.count += 1
                 self._peak = None
                 self._rising, self._extreme = True, (n, x, index)
         if self._candidate:                                   # a blink, once it comes back up
@@ -227,10 +224,9 @@ class GestureEvent:
 class GestureDetector:
     """Feed samples in order with step() (raw ADC) or step_filtered() (Chords-Web values).
 
-    Each call returns a list with 0 or 1 GestureEvent. `value`, `reference`, `state`, `model` and
-    reset() are the attributes Pipeline and the live plot already use on CycleDetector.
+    Each call returns a list with 0 or 1 GestureEvent. Pipeline and the live plot read `value`
+    (the filtered signal), `state` and `model`; `blinks.count` counts every blink, paired or not.
     """
-    reference = 0.0
 
     def __init__(self, model=None):
         self.model = m = model or GestureModel()
@@ -256,7 +252,6 @@ class GestureDetector:
         self.value = 0.0
         self.gaze = 0                # side the eyes are on: sign of the pulse that took them there, 0 = centre
         self._away_size = 0.0        # size of that pulse, to recognise the way back
-        self._last_blink = None
         self._cooldown = 0
 
     def step(self, raw, clipped=False, index=0, host_time=0.0):
@@ -318,9 +313,8 @@ class GestureDetector:
                     self._grow(pulse, level)              # nothing in between: one movement in two steps
                     self.state = 'pulse'
                     return []
-                events = self._blink(n, index, host_time) if self._swung_back() else []
-                self._pulse, self.state = self._new_pulse(value, n, index), 'pulse'
-                return events
+                self._pulse, self.state = self._new_pulse(value, n, index), 'pulse'   # a blink's spike or a new pulse
+                return []
             self._dip = max(self._dip, -level)
             if -level < m.onset:
                 self._swing = None
@@ -337,12 +331,9 @@ class GestureDetector:
             if since >= t['confirm']:
                 left = self._left[0] / self._left[1]
                 self.state = 'idle'
-                if self._swung_back(left):
-                    events = self._blink(n, index, host_time)
-                elif left >= m.tail and pulse['peak'] >= m.move_peak:
-                    events = self._movement(n, index, host_time)
-                else:
-                    events = []
+                # A spike with its rebound is a blink, never a look (BlinkPairs decides SELECT).
+                moved = not self._swung_back(left) and left >= m.tail and pulse['peak'] >= m.move_peak
+                events = self._movement(n, index, host_time) if moved else []
                 if self._swing is not None:
                     self._pulse, self.state = self._swing, 'pulse'
                 return events
@@ -363,11 +354,7 @@ class GestureDetector:
         return self._dip >= max(m.rebound, m.rebound_ratio * self._pulse['peak']) and left < m.recover * self._dip
 
     def _distrust(self):
-        self.state, self._quiet, self.gaze, self._last_blink = 'unsettled', 0, 0, None
-
-    def _blink(self, n, index, host_time):
-        """A spike with its rebound: never a look. SELECT is decided by BlinkPairs."""
-        return []
+        self.state, self._quiet, self.gaze = 'unsettled', 0, 0
 
     def _movement(self, n, index, host_time):
         """The eyes moved and stayed: a look, the way back from one, or a movement too small to be a command."""
